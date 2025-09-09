@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>Stegan</title>
+
+    <link type="text/css" href=" {{ url_for('static' , filename='css/vendor/bootstrap.min.css') }}" rel="stylesheet">
+	<link type="text/css" href=" {{ url_for('static', filename='css/vendor/mdb.min.css') }}" rel="stylesheet">
+	<link type="text/css" href=" {{ url_for('static', filename='css/vendor/fontawesome.min.css') }}" rel="stylesheet">
+    <link type="text/css" href=" {{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/vendor/jquery.min.js') }}" type="text/javascript"></script>
+    {{ toastr.include_toastr_css() }}
+    {{ toastr.message() }}
+
+</head>
+<body>
+
+    <main class="container-fluid animated fadeIn">
+        {% block body %}
+        {% endblock %}
+    </main>
+
+	<script src="{{ url_for('static', filename='js/vendor/popper.min.js') }}" type="text/javascript"></script>
+	<script src="{{ url_for('static', filename='js/vendor/bootstrap.min.js') }}" type="text/javascript"></script>
+	<script src="{{ url_for('static', filename='js/vendor/mdb/mdb.min.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='js/vendor/mdb/datatables.min.js') }}" type="text/javascript"></script>
+    {{ toastr.include_toastr_js() }}
+
+</body>
+</html>
