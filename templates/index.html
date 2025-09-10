@@ -15,6 +15,29 @@
                                 Step 1: Upload your image/audio file to use as a cover object
                             </b>
                         </div>
+
+                        <div id="previewArea" class="text-center mt-3 mb-3">
+                            <div id="previewBox"
+                                 class="d-flex align-items-center justify-content-center border border-dark">
+
+                                <span id="noFileText" class="text-muted position-absolute">No file selected</span>
+
+                                <!-- For images -->
+                                <img src="" id="coverImage" class="d-none" />
+
+                                <!-- For audio waveform -->
+                                <div id="waveform" class="d-none w-100 h-100"></div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <input class="form-control" type="file" id="coverFile" name="coverFile"
+                                   accept=".bmp,.png,.gif,.wav,.pcm">
+                        </div>
+
+                        <div id="fileActions" class="text-center mt-3 d-none">
+                            <button type="button" class="btn btn-danger" id="removeFileBtn">Remove File</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -25,10 +48,41 @@
                             Step 2: Select the number of Least Significant Bits (LSBs) to use and your key
                         </b>
                     </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label for="lsbCount" class="form-label">
+                                Select number of LSBs to use (1-8)
+                            </label>
+                            <select class="custom-select md-form md-outline d-block" id="lsbCount" name="lsbCount" required>
+                                <option selected value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="stegoKey" class="form-label">
+                                Please enter a number as a key to hide your object
+                            </label>
+                            <input type="number" class="form-control" id="stegoKey" name="stegoKey" required>
+                        </div>
+
+                        <div id="step3Text" class="text-center mt-2" style="display: none;">
+                            <b class="text-danger">Step 3: Click a location in your file to hide your data</b>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </form>
 </section>
+
+<script src="https://unpkg.com/wavesurfer.js"></script>
+<script src="{{ url_for('static', filename='js/script.js') }}" type="text/javascript"></script>
 
 {% endblock %}
