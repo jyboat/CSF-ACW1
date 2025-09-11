@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template, url_for, redirect, request, flash
 from flask_toastr import Toastr
 from werkzeug.utils import secure_filename
-from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, CoverMetaAudio
+from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, is_image_extension, load_image_meta, compute_capacity_bytes_image
 from typing import Any
 import io
 
@@ -12,9 +12,8 @@ toastr = Toastr(app)
 # Flask session secret; required for flash messaging
 app.config["SECRET_KEY"] = "dev-key"
 
-app.config["UPLOAD_FOLDER"] = os.path.join(os.getcwd(), "uploads")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -59,15 +58,10 @@ def index():
 
         # --- Basic field presence checks --------------------------------------
         if not cover or not cover.filename:
-            flash("Please upload a WAV audio file as the cover.", "error")
+            flash("Please upload a cover file (.wav, .bmp, .png, or .gif).", "error")
             return render_template('index.html', **context)
         if not payload or not payload.filename:
             flash("Please upload a payload file.", "error")
-            return render_template('index.html', **context)
-
-        # --- Cover file type: audio-only (.wav) --------------------------------
-        if not is_wav_extension(cover.filename):
-            flash("Unsupported cover type. For audio-only mode, please use a .wav file.", "error")
             return render_template('index.html', **context)
 
         # --- LSB count validation (must be 1..8 per spec) ----------------------
@@ -94,47 +88,56 @@ def index():
         context["cover_filename"] = cover.filename
         context["payload_filename"] = payload.filename
 
+
         # --- WAV header validation & meta (PCM integer check) -------------------
         try:
-            meta = load_audio_meta(cover_bytes)  # type: CoverMetaAudio
+            if is_wav_extension(cover.filename):
+                # --- AUDIO path ---
+                meta = load_audio_meta(cover_bytes)  # CoverMetaAudio
+                if not meta.is_pcm_integer:
+                    flash("Unsupported WAV format. Please provide PCM 8/16/24-bit WAV (not float).", "error")
+                    return render_template('index.html', **context)
+
+                capacity_bytes = compute_capacity_bytes(meta, lsb)
+                meta_obj = meta  # store if you want to display later
+
+            elif is_image_extension(cover.filename):
+                # --- IMAGE path ---
+                meta_img = load_image_meta(cover_bytes)  # CoverMetaImage
+                capacity_bytes = compute_capacity_bytes_image(meta_img, lsb)
+                meta_obj = meta_img
+
+            else:
+                flash("Unsupported cover type. Use a .wav (audio) or .bmp/.png/.gif (image).", "error")
+                return render_template('index.html', **context)
+
         except Exception as e:
-            flash(f"Failed to read WAV header: {e}", "error")
+            flash(f"Failed to read cover header: {e}", "error")
             return render_template('index.html', **context)
 
-        if not meta.is_pcm_integer:
-            # We only support PCM integer WAV (8/16/24-bit), not float WAV.
-            flash("Unsupported WAV format. Please provide PCM 8/16/24-bit WAV (not float).", "error")
-            return render_template('index.html', **context)
-
-        # --- Capacity calculation (audio): frames * channels * lsb / 8 ----------
-        capacity_bytes = compute_capacity_bytes(meta, lsb)  # type: int
-        fits = payload_size <= capacity_bytes  # type: bool
-
+        fits = payload_size <= capacity_bytes
 
         context.update({
             "capacity": capacity_bytes,
             "fits": fits,
-            "cover_meta": meta,
+            "cover_meta": meta_obj,
             "payload_size": payload_size,
             "lsbCount": lsb,
             "stegoKey": key,
         })
 
-
         if not fits:
-            # Show concrete numbers so user can choose a larger cover or increase LSBs.
             flash(
                 f"Payload too large for this cover at {lsb} LSB(s). "
-                f"Payload={payload_size} bytes, Capacity={capacity_bytes} bytes.",
+                f"Payload={payload_size} bytes, Cover File={capacity_bytes} bytes.",
                 "error"
             )
         else:
             flash(
-                f"Capacity OK. Capacity={capacity_bytes} bytes, Payload={payload_size} bytes.",
+                f"Capacity OK. Cover File={capacity_bytes} bytes, Payload={payload_size} bytes.",
                 "success"
             )
 
-        # Render the same form with capacity panel filled
         return render_template('index.html', **context)
 
     return render_template('index.html', **context)
