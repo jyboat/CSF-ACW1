@@ -4,6 +4,7 @@ from flask_toastr import Toastr
 from werkzeug.utils import secure_filename
 from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, CoverMetaAudio
 from typing import Any
+import io
 
 app = Flask(__name__)
 toastr = Toastr(app)
@@ -14,18 +15,6 @@ app.config["SECRET_KEY"] = "dev-key"
 app.config["UPLOAD_FOLDER"] = os.path.join(os.getcwd(), "uploads")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-
-def _save(file_storage, subdir: str) -> str:
-    """
-    Saves an uploaded file (werkzeug.datastructures.FileStorage) under uploads/<subdir>/
-    Returns: absolute path to saved file.
-    Raises: OSError on filesystem errors.
-    """
-    os.makedirs(os.path.join(app.config["UPLOAD_FOLDER"], subdir), exist_ok=True)
-    fname = secure_filename(file_storage.filename)
-    path = os.path.join(app.config["UPLOAD_FOLDER"], subdir, fname)
-    file_storage.save(path)
-    return path
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -99,13 +88,15 @@ def index():
             return render_template('index.html', **context)
 
         # --- Persist files to disk ---------------------------------------------
-        cover_path = _save(cover, "covers")  # type: str
-        payload_path = _save(payload, "payloads")  # type: str
-        payload_size = os.path.getsize(payload_path)  # type: int
+        cover_bytes = cover.read()  # bytes
+        payload_bytes = payload.read()  # bytes
+        payload_size = len(payload_bytes)  # int
+        context["cover_filename"] = cover.filename
+        context["payload_filename"] = payload.filename
 
         # --- WAV header validation & meta (PCM integer check) -------------------
         try:
-            meta = load_audio_meta(cover_path)  # type: CoverMetaAudio
+            meta = load_audio_meta(cover_bytes)  # type: CoverMetaAudio
         except Exception as e:
             flash(f"Failed to read WAV header: {e}", "error")
             return render_template('index.html', **context)
@@ -119,7 +110,7 @@ def index():
         capacity_bytes = compute_capacity_bytes(meta, lsb)  # type: int
         fits = payload_size <= capacity_bytes  # type: bool
 
-        # --- Context for template ----------------------------------------------
+
         context.update({
             "capacity": capacity_bytes,
             "fits": fits,
@@ -127,13 +118,11 @@ def index():
             "payload_size": payload_size,
             "lsb": lsb,
             "key": key,
-            "cover_filename": os.path.basename(cover_path),
-            "payload_filename": os.path.basename(payload_path),
         })
 
-        # --- Spec-mandated feedback (limit check) -------------------------------
+
         if not fits:
-            # Spec: show an error when payload is too large for the selected cover object.
+
             # Show concrete numbers so user can choose a larger cover or increase LSBs.
             flash(
                 f"Payload too large for this cover at {lsb} LSB(s). "
@@ -149,7 +138,6 @@ def index():
         # Render the same form with capacity panel filled
         return render_template('index.html', **context)
 
-        # GET: just render the form
     return render_template('index.html', **context)
 
 
