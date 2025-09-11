@@ -9,6 +9,7 @@ Spec mapping:
 
 from dataclasses import dataclass
 import wave
+import io
 
 @dataclass
 class CoverMetaAudio:
@@ -23,32 +24,42 @@ class CoverMetaAudio:
 def is_wav_extension(filename: str) -> bool:
     return filename.lower().endswith(".wav")
 
-def load_audio_meta(path: str) -> CoverMetaAudio:
+def load_audio_meta(path_or_bytes) -> CoverMetaAudio:
     """
     Reads a WAV header and returns audio metadata.
-
-    Raises:
-        wave.Error: if the file is not a valid WAV.
-        OSError: if the file is missing or unreadable.
+    Accepts a filesystem path (str) or bytes-like object.
     """
-    with wave.open(path, "rb") as wf:
-        nch = wf.getnchannels()            # int: number of channels
-        sampwidth_bytes = wf.getsampwidth()# int: bytes per sample (1, 2, 3)
-        fr = wf.getframerate()             # int: sample rate (Hz)
-        nframes = wf.getnframes()          # int: total frames (per channel timebase)
+    def _read(wf):
+        nch = wf.getnchannels()
+        sampwidth_bytes = wf.getsampwidth()
+        fr = wf.getframerate()
+        nframes = wf.getnframes()
+        bits_per_sample = sampwidth_bytes * 8
+        is_pcm_integer = bits_per_sample in (8, 16, 24)
+        return nch, nframes, bits_per_sample, fr, is_pcm_integer
 
-    # WAV PCM integer formats usually have sampwidth 1/2/3 -> 8/16/24 bits per sample.
-    bits_per_sample = sampwidth_bytes * 8
-    is_pcm_integer = bits_per_sample in (8, 16, 24)
-
-    return CoverMetaAudio(
-        path=path,
-        channels=nch,
-        frames=nframes,
-        bits_per_sample=bits_per_sample,
-        sample_rate=fr,
-        is_pcm_integer=is_pcm_integer,
-    )
+    if isinstance(path_or_bytes, (bytes, bytearray)):
+        with wave.open(io.BytesIO(path_or_bytes), "rb") as wf:
+            nch, nframes, bps, fr, is_pcm = _read(wf)
+        return CoverMetaAudio(
+            path="<bytes>",
+            channels=nch,
+            frames=nframes,
+            bits_per_sample=bps,
+            sample_rate=fr,
+            is_pcm_integer=is_pcm,
+        )
+    else:
+        with wave.open(path_or_bytes, "rb") as wf:
+            nch, nframes, bps, fr, is_pcm = _read(wf)
+        return CoverMetaAudio(
+            path=path_or_bytes,
+            channels=nch,
+            frames=nframes,
+            bits_per_sample=bps,
+            sample_rate=fr,
+            is_pcm_integer=is_pcm,
+        )
 
 def compute_capacity_bytes(meta: CoverMetaAudio, lsb_count: int) -> int:
     """

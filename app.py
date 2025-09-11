@@ -45,17 +45,17 @@ def index():
         "fits": None,
         "cover_meta": None,
         "payload_size": None,
-        "lsb": None,
-        "key": None,
+        "lsbCount": None,
+        "stegoKey": None,
         "cover_filename": None,
         "payload_filename": None,
     }
 
     if request.method == 'POST':
-        cover = request.files.get("cover")
+        cover = request.files.get("coverFile")
         payload = request.files.get("payload")
-        lsb_str = request.form.get("lsb", "").strip()
-        key_str = request.form.get("key", "").strip()
+        lsb_str = request.form.get("lsbCount", "").strip()
+        key_str = request.form.get("stegoKey", "").strip()
 
         # --- Basic field presence checks --------------------------------------
         if not cover or not cover.filename:
@@ -116,13 +116,12 @@ def index():
             "fits": fits,
             "cover_meta": meta,
             "payload_size": payload_size,
-            "lsb": lsb,
-            "key": key,
+            "lsbCount": lsb,
+            "stegoKey": key,
         })
 
 
         if not fits:
-
             # Show concrete numbers so user can choose a larger cover or increase LSBs.
             flash(
                 f"Payload too large for this cover at {lsb} LSB(s). "
