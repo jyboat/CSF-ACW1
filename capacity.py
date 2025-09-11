@@ -1,0 +1,62 @@
+"""
+I/O:
+- Input: path to a WAV file (RIFF/WAVE), expected PCM integer format (8/16/24-bit), mono/stereo.
+- Output: CoverMetaAudio (metadata) and capacity-in-bytes functions.
+
+Spec mapping:
+- Capacity requirement before encoding, and limit check with error if payload too large.
+"""
+
+from dataclasses import dataclass
+import wave
+
+@dataclass
+class CoverMetaAudio:
+    """Metadata of an audio cover needed for LSB capacity math."""
+    path: str
+    channels: int                 # e.g., 1 (mono) or 2 (stereo)
+    frames: int                   # total number of PCM frames
+    bits_per_sample: int          # 8, 16, or 24 (PCM integer)
+    sample_rate: int              # Hz (not used for capacity, but useful to display)
+    is_pcm_integer: bool          # True if PCM integer (not float)
+
+def is_wav_extension(filename: str) -> bool:
+    return filename.lower().endswith(".wav")
+
+def load_audio_meta(path: str) -> CoverMetaAudio:
+    """
+    Reads a WAV header and returns audio metadata.
+
+    Raises:
+        wave.Error: if the file is not a valid WAV.
+        OSError: if the file is missing or unreadable.
+    """
+    with wave.open(path, "rb") as wf:
+        nch = wf.getnchannels()            # int: number of channels
+        sampwidth_bytes = wf.getsampwidth()# int: bytes per sample (1, 2, 3)
+        fr = wf.getframerate()             # int: sample rate (Hz)
+        nframes = wf.getnframes()          # int: total frames (per channel timebase)
+
+    # WAV PCM integer formats usually have sampwidth 1/2/3 -> 8/16/24 bits per sample.
+    bits_per_sample = sampwidth_bytes * 8
+    is_pcm_integer = bits_per_sample in (8, 16, 24)
+
+    return CoverMetaAudio(
+        path=path,
+        channels=nch,
+        frames=nframes,
+        bits_per_sample=bits_per_sample,
+        sample_rate=fr,
+        is_pcm_integer=is_pcm_integer,
+    )
+
+def compute_capacity_bytes(meta: CoverMetaAudio, lsb_count: int) -> int:
+    """
+    Capacity (bytes) available when using k LSBs on all samples of all channels.
+
+    Math (audio):
+        capacity_bytes = floor( frames * channels * lsb_count / 8 )
+    """
+    if lsb_count < 1 or lsb_count > 8:
+        return 0
+    return (meta.frames * meta.channels * lsb_count) // 8
