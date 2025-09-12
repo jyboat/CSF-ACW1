@@ -109,6 +109,7 @@ $(document).ready(function () {
     $previewBox.on("click", function (e) {
         // Only proceed if a file is uploaded
         if ($fileInput[0].files.length === 0) {
+            $fileInput.trigger("click");
             return; // no file, do nothing
         }
 
@@ -123,6 +124,52 @@ $(document).ready(function () {
         locationModal.show();
     });
 
+    // Drag and drop stuff
+    $previewBox.on("dragover dragenter", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        $previewBox.css("background-color", "#f3e8ff");
+    });
+
+    $previewBox.on("dragleave dragend drop", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        $previewBox.css("background-color", "");
+    });
+
+    // Handle file drop
+    $previewBox.on("drop", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        $previewBox.removeClass("drag-over"); // remove highlight
+
+        const files = e.originalEvent.dataTransfer.files;
+        if (!files || files.length === 0) return;
+
+        const file = files[0]; // only handle the first file for now
+        const allowedTypes = ["image/", "audio/"];
+        const allowedExtensions = [".bmp", ".png", ".gif", ".wav", ".pcm"];
+
+        // Check MIME type
+        const isAllowedType = allowedTypes.some(type => file.type.startsWith(type));
+        // Or check extension as fallback
+        const isAllowedExt = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+
+        if (!isAllowedType && !isAllowedExt) {
+            toastr.error("Unsupported file type! Please upload an image (.bmp, .png, .gif) or audio (.wav, .pcm).");
+            return;
+        }
+
+        // Assign file to input so form submission works
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        $fileInput[0].files = dataTransfer.files;
+
+        // Trigger change event
+        $fileInput.trigger("change");
+    });
+
+    // Show or hide step 3 text
     function toggleStep3Text() {
         const fileSelected = $fileInput[0].files.length > 0;
         const keyEntered = $stegoKey.val().trim() !== "";

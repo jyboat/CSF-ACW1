@@ -3,6 +3,7 @@
     margin: 0 auto;
     overflow: hidden;
     background: #f8f9fa;
+    cursor: pointer;
 }
 
 .home #coverImage {
