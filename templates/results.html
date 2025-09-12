@@ -1,0 +1,124 @@
+{% extends 'layouts/base.html' %}
+{% block body %}
+
+<section class="results container mt-4">
+    <h2 class="text-center">Steganography Results & Visualisation</h2>
+    <hr>
+    <!--Tabs-->
+    <ul class="nav nav-tabs" id="resultsTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="image-tab" data-toggle="tab" href="#image" role="tab" aria-controls="image" aria-selected="true">Image</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="audio-tab" data-toggle="tab" href="#audio" role="tab" aria-controls="audio" aria-selected="false">Audio</a>
+        </li>
+
+    </ul>
+
+    <div class="tab-content mt-4" id="resultTabContents">
+        <!-- Image Tab -->
+         <div class="tab-pane fade show active" id="image" role="tabpanel" aria-labelledby="image-tab">
+            <div class="row">
+              <!-- Cover Object -->
+              <div class="col-md-6">
+                <div class="section-box" id="section-box">
+                  <h5>Original Cover Object</h5>
+                <img src="static/dummy/cover.png" class="cover-image" id="coverImage">
+            
+                <h6 class="mt-3">Metadata</h6>
+                <ul>
+                    <li><strong>File:</strong>cover_filename</li>
+                    <li><strong>LSBs Used:</strong>num_of_lsbs</li>
+                    <li><strong>Key:</strong>key</li>
+                    <li><strong>Max Capacity:</strong>max_capacity</li>
+                </ul>
+                </div>
+              </div>
+              <!-- Stego object-->
+              <div class="col-md-6">
+                <div class="section-box" id="section-box">
+                  <h5>Stego Object</h5>
+                  <img src="static/dummy/cover.png" class="cover-image" id="stegoImage">
+                
+                  <h6 class="mt-3">Metadata</h6>
+                  <ul>
+                    <li><strong>Payload:</strong>payload_filename</li>
+                    <li><strong>Size:</strong>payload_size</li>
+                    <li><strong>Used Capacity:</strong>used_capacity%</li>
+                  </ul>
+                </div>
+              </div>         
+            </div>
+
+            <div class="row">
+              <div class="section-box col-md-6 text-center" id="section-box">
+                <h6>Histogram</h6>
+                <img src="static/dummy/diff_map.png" class="img-preview" id="diffImage">
+              </div>
+            
+              <div class="section-box col-md-6 text-center" id="section-box">
+                <h6>LSB Bitplane</h6>
+                <img src="static/dummy/lsbbit.png" class="img-preview" id="diffImage">
+              </div>
+            </div>
+
+         </div>
+
+        <!-- Audio Tab -->
+        <div class="tab-pane fade" id="audio" role="tabpanel" aria-labelledby="audio-tab">
+          <div class="row">
+            <div class="col-md-6">
+              <!--Cover audio-->
+              <div class="section-box" id="section-box">
+                <h5>Original Audio</h5>
+                <audio class="audio-player" id="audioPlayer" controls>
+                  <source src="static/dummy/audio.png" type="audio/wav">
+                </audio>
+
+                <ul class="mt-2">
+                  <li><strong>Total pixels</strong>total_pixels</li>
+                  <li><strong>Key:</strong>key</li>
+                  <li><strong>Max Capacity:</strong>max_capacity%</li>
+                </ul>
+
+              </div>  
+            </div>
+            <!--Stego audio-->
+            <div class="col-md-6">
+              <div class="section-box" id="section-box">
+                <h5>Stego Audio</h5>
+                <audio class="audio-player" id="audioPlayer" controls>
+                  <source src="static/dummy/audio.png" type="audio/wav">
+                </audio>
+
+                <ul class="mt-2">
+                  <li><strong>Pixels current:</strong>current_pixels</li>
+                  <li><strong>Key:</strong>key</li>
+                  <li><strong>Capacity:</strong>capacity%</li>
+                </ul>
+              </div>  
+            </div>
+          </div>
+
+          <div class="section-box text-center" id="section-box">
+                  <h6>LSB Waveform Difference</h6>
+                  <img src="static/dummy/waveform1.png" class="img-preview" id="waveformImage">
+                  <img src="static/dummy/waveform2.png" class="img-preview" id="waveformImage">
+          </div>
+          
+        </div>
+    </div>
+
+
+
+    <!-- Bottom Buttons -->
+    <div class="mt-4 text-center">
+    <a href="index.html" class="btn btn-secondary">Back to Home</a>
+    <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#payloadModal">View PayLoad</button>
+    <a href="static/dummy/diff_map.png" class="btn btn-success" download>Download Visualisation</a>
+    </div>
+    
+</section>
+
+
+{% endblock %}
