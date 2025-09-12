@@ -16,7 +16,11 @@ $(document).ready(function () {
     const $hiddenTextPayload = $("#hiddenTextPayload");
     const $hiddenFilePayload = $("#hiddenFilePayload");
     const $removePayloadBtn = $("#removePayloadBtn");
+    const $hideBtn = $("#hideBtn");
     const $form = $("#stegoForm");
+
+    const $lsbCount = $("#lsbCount");
+    const $capacityInfo = $("#capacityInfo");
 
     const defaultBoxHeight = 250; // Fixed for audio / empty
 
@@ -79,6 +83,7 @@ $(document).ready(function () {
         }
 
         $fileActions.removeClass("d-none");
+        checkCapacity();
     });
 
     $("#removeFileBtn").on("click", function () {
@@ -93,18 +98,24 @@ $(document).ready(function () {
         }
         $fileActions.addClass("d-none");
         toggleStep3Text();
+        $capacityInfo.text("Waiting for payload input...");
     });
 
     $payloadFile.on("change", function (e) {
         const file = e.target.files[0];
         if (!file) return;
         $removePayloadBtn.removeClass("d-none");
+        checkCapacity();
     });
 
     $removePayloadBtn.on("click", function () {
         $payloadFile.val("");
         $removePayloadBtn.addClass("d-none");
+        checkCapacity();
     });
+
+    $textPayload.on("input", checkCapacity);
+    $lsbCount.on("change", checkCapacity);
 
     $previewBox.on("click", function (e) {
         // Only proceed if a file is uploaded
@@ -187,7 +198,7 @@ $(document).ready(function () {
     // Trigger whenever key changes
     $stegoKey.on("input", toggleStep3Text);
 
-    $("#hideBtn").on("click", function () {
+    $hideBtn.on("click", function () {
         const textVal = $textPayload.val().trim();
         const fileVal = $payloadFile[0].files.length > 0;
 
@@ -198,6 +209,11 @@ $(document).ready(function () {
 
         if (!textVal && !fileVal) {
             toastr.error("Missing fields, please enter text OR upload a file as your payload.");
+            return;
+        }
+
+        if (!checkCapacity(true)) {
+            toastr.error("Insufficient cover capacity for this payload. Please choose fewer payload bits, reduce payload size, or increase LSBs.");
             return;
         }
 
@@ -221,4 +237,49 @@ $(document).ready(function () {
         // Submit the main form
         $form.submit();
     });
+
+    function checkCapacity(strict = false) {
+        const coverFile = $fileInput[0].files[0];
+        const lsbCount = parseInt($lsbCount.val(), 10) || 0;
+
+        if (!coverFile || lsbCount <= 0) {
+            $capacityInfo.text("Waiting for cover and LSB selection...");
+            $hideBtn.prop("disabled", true)
+            return false;
+        }
+
+        const coverCapacityBits = coverFile.size * lsbCount;
+
+        let payloadSizeBytes = 0;
+        if ($textPayload.val().trim()) {
+            payloadSizeBytes = new Blob([$textPayload.val().trim()]).size;
+        } else if ($payloadFile[0].files.length > 0) {
+            payloadSizeBytes = $payloadFile[0].files[0].size;
+        }
+
+        const payloadBits = payloadSizeBytes * 8;
+
+        if (payloadBits === 0) {
+            $capacityInfo.text("Waiting for payload input...");
+            $hideBtn.prop("disabled", true)
+            return false;
+        }
+
+        if (coverCapacityBits >= payloadBits) {
+            $capacityInfo
+                .text(`Sufficient: Cover capacity ${coverCapacityBits} bits, Payload requires ${payloadBits} bits.`)
+                .removeClass("text-danger")
+                .addClass("text-success");
+            $hideBtn.prop("disabled", false)
+            return true;
+        } else {
+            $capacityInfo
+                .text(`Insufficient: Cover capacity ${coverCapacityBits} bits, Payload requires ${payloadBits} bits.
+                Please reduce payload size, or increase cover size.`)
+                .removeClass("text-success")
+                .addClass("text-danger");
+            $hideBtn.prop("disabled", true)
+            return false;
+        }
+    }
 });
