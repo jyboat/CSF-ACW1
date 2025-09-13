@@ -3,10 +3,14 @@ from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, 
 from typing import Any
 import io
 import os
+import wave
+import numpy as np
 from flask import (
     Flask, request, render_template, redirect, url_for,
     flash, send_file, jsonify
 )
+
+# capacity.py
 from capacity import (
     is_wav_extension,
     is_image_extension,
@@ -15,6 +19,8 @@ from capacity import (
     compute_capacity_bytes,
     compute_capacity_bytes_image,
 )
+
+# lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
     select_complex_indices_from_image,
     embed_xor_lsb_at_indices,
@@ -23,151 +29,172 @@ from lsb_xor_algorithm import (
     image_to_flat
 )
 
+# ------------------------------------------------------
+
 app = Flask(__name__)
 toastr = Toastr(app)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
 
-# Flask session secret; required for flash messaging
-app.config["SECRET_KEY"] = "dev-key"
 
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+# =====================================================
+# =============== WAV / PCM AUDIO HELPERS =============
+# =====================================================
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
+def _rng_from_key(key: str) -> np.random.RandomState:
+    # Make a stable seed from the key string
+    seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
+    return np.random.RandomState(int(seed) & 0x7FFFFFFF)
+
+def _wav_bytes_to_np(wav_bytes: bytes):
     """
-       GET: Renders form with two steps (your template).
-       POST: Accepts audio cover (WAV) and payload (any file), plus (lsb, key).
-             Validates inputs and computes capacity for the WAV cover only.
+    Return (samples_1d, params_dict).
+    samples_1d is a 1-D numpy array of dtype:
+        uint8 for 8-bit PCM
+        int16 for 16-bit PCM
+        int32 for 24-bit PCM (stored in 32 bits)
+    Interleaved channels are preserved in the 1-D order.
+    """
+    bio = io.BytesIO(wav_bytes)
+    with wave.open(bio, "rb") as w:
+        n_channels = w.getnchannels()
+        sampwidth = w.getsampwidth()  # bytes per sample (1,2,3)
+        framerate = w.getframerate()
+        n_frames = w.getnframes()
+        comptype = w.getcomptype()
+        compname = w.getcompname()
+        frames = w.readframes(n_frames)
 
-       POST form fields (types):
-           cover: FileStorage (required) -> must be .wav and valid PCM integer WAV (8/16/24-bit)
-           payload: FileStorage (required) -> any file type, just measured by size
-           lsb: str (required) -> integer 1..8
-           key: str (required) -> integer (not used here yet, but spec requires it later)
+    if comptype != "NONE":
+        raise ValueError("Compressed WAV not supported. Use PCM (uncompressed).")
 
-       Response context (types):
-           capacity: int | None
-           fits: bool | None
-           cover_meta: CoverMetaAudio | None
-           payload_size: int | None
-           lsb: int | None
-           key: int | None
-           cover_filename: str | None
-           payload_filename: str | None
-       """
+    if sampwidth == 1:
+        # 8-bit PCM is unsigned
+        samples = np.frombuffer(frames, dtype=np.uint8).copy()
+        dtype = np.uint8
+    elif sampwidth == 2:
+        # 16-bit little-endian signed
+        samples = np.frombuffer(frames, dtype="<i2").copy()
+        dtype = np.int16
+    elif sampwidth == 3:
+        # 24-bit little-endian signed -> expand to int32
+        b = np.frombuffer(frames, dtype=np.uint8).reshape(-1, 3)
+        # little-endian combine
+        s = (b[:, 0].astype(np.uint32)
+             | (b[:, 1].astype(np.uint32) << 8)
+             | (b[:, 2].astype(np.uint32) << 16))
+        # sign extend from 24-bit to 32-bit
+        sign = (s & 0x800000) != 0
+        s_signed = s.astype(np.int32)
+        s_signed[sign] -= (1 << 24)
+        samples = s_signed
+        dtype = np.int32
+    else:
+        raise ValueError(f"Unsupported WAV sample width: {sampwidth*8} bits")
 
-    context: dict[str, Any] = {
-        "capacity": None,
-        "fits": None,
-        "cover_meta": None,
-        "payload_size": None,
-        "lsbCount": None,
-        "stegoKey": None,
-        "cover_filename": None,
-        "payload_filename": None,
-    }
+    params = dict(
+        n_channels=n_channels,
+        sampwidth=sampwidth,
+        framerate=framerate,
+        n_frames=n_frames,
+        dtype=dtype,
+    )
+    return samples, params
 
-    if request.method == 'POST':
-        cover = request.files.get("coverFile")
-        payload = request.files.get("payload")
-        lsb_str = request.form.get("lsbCount", "").strip()
-        key_str = request.form.get("stegoKey", "").strip()
+def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
+    """
+    Convert 1-D interleaved samples back into WAV bytes with original params.
+    """
+    n_channels = params["n_channels"]
+    sampwidth = params["sampwidth"]
+    framerate = params["framerate"]
 
-        # --- Basic field presence checks --------------------------------------
-        if not cover or not cover.filename:
-            flash("Please upload a cover file (.wav, .bmp, .png, or .gif).", "error")
-            return render_template('index.html', **context)
-        if not payload or not payload.filename:
-            flash("Please upload a payload file.", "error")
-            return render_template('index.html', **context)
+    # Ensure contiguous
+    samples = np.ascontiguousarray(samples)
 
-        # --- LSB count validation (must be 1..8 per spec) ----------------------
-        try:
-            lsb = int(lsb_str)
-        except ValueError:
-            flash("LSB count must be an integer (1–8).", "error")
-            return render_template('index.html', **context)
-        if lsb < 1 or lsb > 8:
-            flash("LSB count must be between 1 and 8.", "error")
-            return render_template('index.html', **context)
+    if sampwidth == 1:
+        # uint8
+        if samples.dtype != np.uint8:
+            # clip and cast
+            samples = np.clip(samples, 0, 255).astype(np.uint8)
+        frames_bytes = samples.tobytes()
+    elif sampwidth == 2:
+        if samples.dtype != np.int16:
+            samples = np.clip(samples, -32768, 32767).astype("<i2")
+        frames_bytes = samples.astype("<i2").tobytes()
+    elif sampwidth == 3:
+        # clamp to 24-bit range, then pack to 3 bytes LE
+        s = samples.astype(np.int32)
+        s = np.clip(s, -(1 << 23), (1 << 23) - 1)
+        # Convert to unsigned representation for packing
+        s_u = s.copy()
+        neg = s_u < 0
+        s_u[neg] += (1 << 24)
+        b0 = (s_u & 0xFF).astype(np.uint8)
+        b1 = ((s_u >> 8) & 0xFF).astype(np.uint8)
+        b2 = ((s_u >> 16) & 0xFF).astype(np.uint8)
+        frames_bytes = np.column_stack([b0, b1, b2]).ravel().tobytes()
+    else:
+        raise ValueError(f"Unsupported WAV sample width: {sampwidth*8} bits")
 
-        # --- Key validation (numeric required by spec, used later for encode) ---
-        try:
-            key = int(key_str)
-        except ValueError:
-            flash("Key must be an integer (required).", "error")
-            return render_template('index.html', **context)
+    bio_out = io.BytesIO()
+    with wave.open(bio_out, "wb") as w:
+        w.setnchannels(n_channels)
+        w.setsampwidth(sampwidth)
+        w.setframerate(framerate)
+        # nframes inferred from writeframes
+        w.writeframes(frames_bytes)
+    return bio_out.getvalue()
 
-        # --- Persist files to disk ---------------------------------------------
-        cover_bytes = cover.read()  # bytes
-        payload_bytes = payload.read()  # bytes
-        payload_size = len(payload_bytes)  # int
-        context["cover_filename"] = cover.filename
-        context["payload_filename"] = payload.filename
+def _select_audio_indices(samples: np.ndarray, key: str, top_percent: int | None = None) -> np.ndarray:
+    """
+    For now: use ALL sample positions, shuffled by key.
+    (You can later swap to an energy-based selection and keep the same shape.)
+    """
+    n = samples.size
+    idx = np.arange(n, dtype=np.int64)
+    rng = _rng_from_key(key)
+    rng.shuffle(idx)
+    return idx
 
+def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str) -> bytes:
+    samples, params = _wav_bytes_to_np(wav_bytes)
 
-        # --- WAV header validation & meta (PCM integer check) -------------------
-        try:
-            if is_wav_extension(cover.filename):
-                # --- AUDIO path ---
-                meta = load_audio_meta(cover_bytes)  # CoverMetaAudio
-                if not meta.is_pcm_integer:
-                    flash("Unsupported WAV format. Please provide PCM 8/16/24-bit WAV (not float).", "error")
-                    return render_template('index.html', **context)
+    # Choose indices (all samples shuffled for now)
+    indices = _select_audio_indices(samples, key)
 
-                capacity_bytes = compute_capacity_bytes(meta, lsb)
-                meta_obj = meta  # store if you want to display later
+    bits_needed = (16 + len(payload)) * 8  # header + payload (your engine uses 16-byte header)
+    bits_avail = indices.size * k
+    if bits_needed > bits_avail:
+        raise ValueError(
+            f"Not enough capacity in selected audio samples. Need {bits_needed} bits, have {bits_avail} bits."
+        )
 
-            elif is_image_extension(cover.filename):
-                # --- IMAGE path ---
-                meta_img = load_image_meta(cover_bytes)  # CoverMetaImage
-                capacity_bytes = compute_capacity_bytes_image(meta_img, lsb)
-                meta_obj = meta_img
+    # IMPORTANT: operate on a copy to avoid mutating input
+    work = samples.copy()
 
-            else:
-                flash("Unsupported cover type. Use a .wav (audio) or .bmp/.png/.gif (image).", "error")
-                return render_template('index.html', **context)
+    # Reuse your robust header + keyed XOR + LSB function
+    stego = embed_xor_lsb_at_indices(work, payload, k=k, key=key, indices=indices)
 
-        except Exception as e:
-            flash(f"Failed to read cover header: {e}", "error")
-            return render_template('index.html', **context)
+    # Pack back to WAV
+    return _np_to_wav_bytes(stego, params)
 
-        fits = payload_size <= capacity_bytes
+def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
+    samples, params = _wav_bytes_to_np(wav_bytes)
+    indices = _select_audio_indices(samples, key)
+    payload = extract_xor_lsb_at_indices(samples, k=k, key=key, indices=indices)
+    return payload
 
-        context.update({
-            "capacity": capacity_bytes,
-            "fits": fits,
-            "cover_meta": meta_obj,
-            "payload_size": payload_size,
-            "lsbCount": lsb,
-            "stegoKey": key,
-        })
+# =====================================================
+# ==================== ROUTES =========================
+# =====================================================
 
-        if not fits:
-            flash(
-                f"Payload too large for this cover at {lsb} LSB(s). "
-                f"Payload={payload_size} bytes, Cover File={capacity_bytes} bytes.",
-                "error"
-            )
-        else:
-            flash(
-                f"Capacity OK. Cover File={capacity_bytes} bytes, Payload={payload_size} bytes.",
-                "success"
-            )
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
 
-        return render_template('index.html', **context)
-
-    return render_template('index.html', **context)
-
-@app.route('/results')
-def results():
-    return render_template('results.html')
 
 @app.route("/check", methods=["POST"])
 def check_capacity_form():
-    """
-    Capacity check from the main form (returns to the page with a flash).
-    Works for both images and WAV.
-    """
     cover = request.files.get("coverFile")
     lsb_str = request.form.get("lsbCount", "1")
 
@@ -191,7 +218,7 @@ def check_capacity_form():
                 flash("WAV must be 8/16/24-bit PCM.", "error")
                 return redirect(url_for("index"))
             cap = compute_capacity_bytes(meta, lsb)
-            flash(f"Audio capacity: {cap} bytes available.", "success")
+            flash(f"Audio capacity: {cap} bytes available (theoretical).", "success")
         elif is_image_extension(cover.filename):
             meta_img = load_image_meta(cover_bytes)
             cap = compute_capacity_bytes_image(meta_img, lsb)
@@ -206,9 +233,6 @@ def check_capacity_form():
 
 @app.route("/api/check-capacity", methods=["POST"])
 def api_check_capacity():
-    """
-    JSON capacity endpoint (useful for AJAX). Image & WAV.
-    """
     cover = request.files.get("coverFile")
     lsb_str = request.form.get("lsbCount", "1")
     try:
@@ -240,10 +264,9 @@ def api_check_capacity():
 
 
 @app.route("/embed", methods=["POST"])
-def embed_image():
+def embed_media():
     """
-    Embed payload into an image using your LSB+XOR engine with complex-pixel selection.
-    Produces a PNG stego (lossless).
+    Embed payload into an IMAGE (PNG/BMP/GIF) or AUDIO (WAV) using your LSB+XOR engine.
     """
     cover = request.files.get("coverFile")
     lsb_str = request.form.get("lsbCount", "1")
@@ -252,7 +275,7 @@ def embed_image():
     payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
 
     if not cover or not cover.filename:
-        flash("Upload a cover image first.", "error")
+        flash("Upload a cover file first.", "error")
         return redirect(url_for("index"))
 
     try:
@@ -277,66 +300,85 @@ def embed_image():
 
     payload_bytes = text_payload_str.encode("utf-8") if text_payload_str else payload_file.read()
 
-    # Images only for embed (audio later)
-    if not is_image_extension(cover.filename):
-        flash("Embed currently supports images (.png/.bmp/.gif).", "error")
-        return redirect(url_for("index"))
-
     cover_bytes = cover.read()
-    try:
-        # Capacity (theoretical)
-        meta_img = load_image_meta(cover_bytes)
-        capacity_bytes = compute_capacity_bytes_image(meta_img, lsb)
-        if len(payload_bytes) > capacity_bytes:
-            flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
-            return redirect(url_for("index"))
 
-        # Prepare pixels and select complex indices (same recipe must be used at extract)
-        flat_cover, shape, _ = image_to_flat(cover_bytes, mode="RGB")
-        # Using top 30% complex pixels; keep this consistent at extract
-        _, _, _, eligible = select_complex_indices_from_image(
-            cover_bytes, top_percent=30, mode="RGB", key=key
-        )
+    # -------- IMAGE PATH --------
+    if is_image_extension(cover.filename):
+        try:
+            meta_img = load_image_meta(cover_bytes)
+            capacity_bytes = compute_capacity_bytes_image(meta_img, lsb)
+            if len(payload_bytes) > capacity_bytes:
+                flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
+                return redirect(url_for("index"))
 
-        # We need bits for header (16 bytes) + payload
-        bits_needed = (16 + len(payload_bytes)) * 8
-        bits_avail = len(eligible) * lsb
-        if bits_needed > bits_avail:
-            flash(
-                "Not enough complex locations with current LSB/top% settings. "
-                f"Need {bits_needed} bits, have {bits_avail} bits.",
-                "error"
+            flat_cover, shape, _ = image_to_flat(cover_bytes, mode="RGB")
+            _, _, _, eligible = select_complex_indices_from_image(
+                cover_bytes, top_percent=30, mode="RGB", key=key
             )
+            bits_needed = (16 + len(payload_bytes)) * 8
+            bits_avail = len(eligible) * lsb
+            if bits_needed > bits_avail:
+                flash(
+                    "Not enough complex locations with current LSB/top% settings. "
+                    f"Need {bits_needed} bits, have {bits_avail} bits.",
+                    "error"
+                )
+                return redirect(url_for("index"))
+
+            stego_flat = embed_xor_lsb_at_indices(
+                flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
+            )
+            stego_png = flat_to_image(stego_flat, shape, mode="RGB")
+            return send_file(
+                io.BytesIO(stego_png),
+                mimetype="image/png",
+                as_attachment=True,
+                download_name="stego.png",
+            )
+        except Exception as e:
+            flash(f"Embed (image) failed: {e}", "error")
             return redirect(url_for("index"))
 
-        # Embed
-        stego_flat = embed_xor_lsb_at_indices(
-            flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
-        )
-        stego_png = flat_to_image(stego_flat, shape, mode="RGB")
+    # -------- AUDIO PATH (WAV) --------
+    if is_wav_extension(cover.filename):
+        try:
+            meta = load_audio_meta(cover_bytes)
+            if not meta.is_pcm_integer:
+                flash("WAV must be 8/16/24-bit PCM.", "error")
+                return redirect(url_for("index"))
 
-        return send_file(
-            io.BytesIO(stego_png),
-            mimetype="image/png",
-            as_attachment=True,
-            download_name="stego.png",
-        )
-    except Exception as e:
-        flash(f"Embed failed: {e}", "error")
-        return redirect(url_for("index"))
+            # Theoretical capacity (all samples)
+            capacity_bytes = compute_capacity_bytes(meta, lsb)
+            if len(payload_bytes) > capacity_bytes:
+                flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
+                return redirect(url_for("index"))
+
+            stego_wav = _embed_audio_wav(cover_bytes, payload_bytes, k=lsb, key=key)
+            return send_file(
+                io.BytesIO(stego_wav),
+                mimetype="audio/wav",
+                as_attachment=True,
+                download_name="stego.wav",
+            )
+        except Exception as e:
+            flash(f"Embed (audio) failed: {e}", "error")
+            return redirect(url_for("index"))
+
+    flash("Unsupported cover type. Use PNG/BMP/GIF for images or WAV for audio.", "error")
+    return redirect(url_for("index"))
 
 
 @app.route("/detect", methods=["POST"])
 def detect_header():
     """
-    Try to detect a valid STG1 header/checksum in a suspected stego image.
+    Detect a valid STG1 header in IMAGE (PNG/BMP/GIF) or AUDIO (WAV).
     """
     stego = request.files.get("stegoFile")
     lsb_str = request.form.get("lsbCount", "1")
     key = request.form.get("stegoKey", "").strip()
 
     if not stego or not stego.filename:
-        flash("Upload a suspected stego image.", "error")
+        flash("Upload a suspected stego file.", "error")
         return redirect(url_for("index"))
 
     try:
@@ -351,44 +393,59 @@ def detect_header():
         flash("Key required for detection.", "error")
         return redirect(url_for("index"))
 
-    if not is_image_extension(stego.filename):
-        flash("Detection currently supports images (.png/.bmp/.gif).", "error")
+    file_bytes = stego.read()
+
+    # -------- IMAGE PATH --------
+    if is_image_extension(stego.filename):
+        try:
+            flat, _, _ = image_to_flat(file_bytes, mode="RGB")
+            _, _, _, eligible = select_complex_indices_from_image(
+                file_bytes, top_percent=30, mode="RGB", key=key
+            )
+            header_bits = 16 * 8
+            groups_hdr = (header_bits + lsb - 1) // lsb
+            if groups_hdr > len(eligible):
+                flash("Not enough complex locations to read header.", "error")
+                return redirect(url_for("index"))
+
+            _ = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
+            flash("Likely stego found (valid STG1 header and checksum).", "success")
+        except Exception as e:
+            flash(f"No valid header detected or wrong key/LSB (image): {e}", "error")
         return redirect(url_for("index"))
 
-    img_bytes = stego.read()
-    try:
-        flat, _, _ = image_to_flat(img_bytes, mode="RGB")
-        _, _, _, eligible = select_complex_indices_from_image(
-            img_bytes, top_percent=30, mode="RGB", key=key
-        )
+    # -------- AUDIO PATH --------
+    if is_wav_extension(stego.filename):
+        try:
+            samples, _ = _wav_bytes_to_np(file_bytes)
+            indices = _select_audio_indices(samples, key)
+            header_bits = 16 * 8
+            groups_hdr = (header_bits + lsb - 1) // lsb
+            if groups_hdr > indices.size:
+                flash("Not enough audio samples to read header.", "error")
+                return redirect(url_for("index"))
 
-        # Header is 16 bytes => 128 bits. Need ceil(128 / lsb) pixels from eligible.
-        header_bits = 16 * 8
-        groups_hdr = (header_bits + lsb - 1) // lsb
-        if groups_hdr > len(eligible):
-            flash("Not enough complex locations to read header.", "error")
-            return redirect(url_for("index"))
+            _ = extract_xor_lsb_at_indices(samples, k=lsb, key=key, indices=indices)
+            flash("Likely stego found in audio (valid STG1 header and checksum).", "success")
+        except Exception as e:
+            flash(f"No valid header detected or wrong key/LSB (audio): {e}", "error")
+        return redirect(url_for("index"))
 
-        # Full extract attempt; the extractor validates header & checksum internally.
-        _ = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
-        flash("Likely stego found (valid STG1 header and checksum).", "success")
-    except Exception as e:
-        flash(f"No valid header detected or wrong key/LSB: {e}", "error")
-
+    flash("Unsupported file type for detection.", "error")
     return redirect(url_for("index"))
 
 
 @app.route("/extract", methods=["POST"])
-def extract_image():
+def extract_media():
     """
-    Extract an embedded payload from an image using the same parameters (LSB/key).
+    Extract payload from IMAGE (PNG/BMP/GIF) or AUDIO (WAV) using the same LSB/key.
     """
     stego = request.files.get("stegoFile")
     lsb_str = request.form.get("lsbCount", "1")
     key = request.form.get("stegoKey", "").strip()
 
     if not stego or not stego.filename:
-        flash("Upload a stego image.", "error")
+        flash("Upload a stego file.", "error")
         return redirect(url_for("index"))
 
     try:
@@ -403,27 +460,42 @@ def extract_image():
         flash("Key is required.", "error")
         return redirect(url_for("index"))
 
-    if not is_image_extension(stego.filename):
-        flash("Extraction currently supports images (.png/.bmp/.gif).", "error")
-        return redirect(url_for("index"))
+    file_bytes = stego.read()
 
-    img_bytes = stego.read()
-    try:
-        flat, _, _ = image_to_flat(img_bytes, mode="RGB")
-        _, _, _, eligible = select_complex_indices_from_image(
-            img_bytes, top_percent=30, mode="RGB", key=key
-        )
-        payload = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
+    # -------- IMAGE PATH --------
+    if is_image_extension(stego.filename):
+        try:
+            flat, _, _ = image_to_flat(file_bytes, mode="RGB")
+            _, _, _, eligible = select_complex_indices_from_image(
+                file_bytes, top_percent=30, mode="RGB", key=key
+            )
+            payload = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/octet-stream",
+                as_attachment=True,
+                download_name="extracted_payload.bin",
+            )
+        except Exception as e:
+            flash(f"Extract (image) failed: {e}", "error")
+            return redirect(url_for("index"))
 
-        return send_file(
-            io.BytesIO(payload),
-            mimetype="application/octet-stream",
-            as_attachment=True,
-            download_name="extracted_payload.bin",
-        )
-    except Exception as e:
-        flash(f"Extract failed: {e}", "error")
-        return redirect(url_for("index"))
+    # -------- AUDIO PATH --------
+    if is_wav_extension(stego.filename):
+        try:
+            payload = _extract_audio_wav(file_bytes, k=lsb, key=key)
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/octet-stream",
+                as_attachment=True,
+                download_name="extracted_payload.bin",
+            )
+        except Exception as e:
+            flash(f"Extract (audio) failed: {e}", "error")
+            return redirect(url_for("index"))
+
+    flash("Unsupported file type for extraction.", "error")
+    return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.debug = True
