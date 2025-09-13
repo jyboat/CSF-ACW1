@@ -18,7 +18,7 @@
 
                         <div id="previewArea" class="text-center mt-3 mb-3">
                             <div id="previewBox"
-                                 class="d-flex align-items-center justify-content-center border border-dark">
+                                class="d-flex align-items-center justify-content-center border border-dark">
 
                                 <span id="noFileText" class="text-muted position-absolute">
                                     Drag and drop or choose a file to get started!
@@ -34,17 +34,16 @@
 
                         <div class="mb-3">
                             <input class="form-control" type="file" id="coverFile" name="coverFile"
-                                   accept=".bmp,.png,.gif,.wav,.pcm">
+                                accept=".bmp,.png,.gif,.wav,.pcm">
                         </div>
 
-                        <p class="text-danger">Only images (.png, .bmp, .gif) and audio files (.wav, .pcm) are supported</p>
+                        <p class="text-danger">Only images (.png, .bmp, .gif) and audio files (.wav, .pcm) are supported
+                        </p>
 
                         <div id="fileActions" class="text-center mt-3 d-none">
                             <button type="button" class="btn btn-danger" id="removeFileBtn">Remove File</button>
                         </div>
-
-                        <input type="hidden" id="hiddenTextPayload" name="textPayload">
-                        <input type="file" id="hiddenFilePayload" name="payloadFile" class="d-none">
+                        <!-- (No hidden payload fields needed; modal submits directly to this form) -->
                     </div>
                 </div>
             </div>
@@ -60,7 +59,8 @@
                             <label for="lsbCount" class="form-label">
                                 Select number of LSBs to use (1-8)
                             </label>
-                            <select class="custom-select md-form md-outline d-block" id="lsbCount" name="lsbCount" required>
+                            <select class="custom-select md-form md-outline d-block" id="lsbCount" name="lsbCount"
+                                required>
                                 <option selected value="1">1</option>
                                 <option value="2">2</option>
                                 <option value="3">3</option>
@@ -85,17 +85,105 @@
                     </div>
 
                     <div class="row mt-3">
-                      <div class="col text-center">
-                        <button type="submit" name="action" value="check" class="btn btn-primary">
-                          Check
-                        </button>
-                      </div>
+                        <div class="col text-center d-flex justify-content-center gap-2">
+                            <button type="submit" class="btn btn-primary" formaction="/check" formmethod="post">
+                                Check capacity
+                            </button>
+                            <button type="button" class="btn btn-success" data-toggle="modal"
+                                data-target="#locationModal">
+                                Embed (image)
+                            </button>
+                        </div>
                     </div>
-
                 </div>
             </div>
         </div>
     </form>
+
+    <!-- Extract (image) -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card p-3">
+                <div class="card-title text-center">
+                    <b class="text-danger">Extract (image)</b>
+                </div>
+                <div class="card-body">
+                    <form enctype="multipart/form-data" method="post" action="/extract">
+                        <div class="mb-3">
+                            <label class="form-label">Stego image</label>
+                            <input class="form-control" type="file" name="stegoFile" accept=".png,.bmp,.gif" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">LSBs</label>
+                                <select class="custom-select md-form md-outline d-block" name="lsbCount" required>
+                                    <option selected value="2">2</option>
+                                    <option value="1">1</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label">Key</label>
+                                <input class="form-control" type="number" name="stegoKey" required>
+                            </div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <button class="btn btn-primary">Extract</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detect header (image) -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card p-3">
+                <div class="card-title text-center">
+                    <b class="text-danger">Detect header (image)</b>
+                </div>
+                <div class="card-body">
+                    <form enctype="multipart/form-data" method="post" action="/detect">
+                        <div class="mb-3">
+                            <label class="form-label">Suspected stego image</label>
+                            <input class="form-control" type="file" name="stegoFile" accept=".png,.bmp,.gif" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">LSBs</label>
+                                <select class="custom-select md-form md-outline d-block" name="lsbCount" required>
+                                    <option selected value="2">2</option>
+                                    <option value="1">1</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label">Key</label>
+                                <input class="form-control" type="number" name="stegoKey" required>
+                            </div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <button class="btn btn-warning">Detect header</button>
+                        </div>
+                    </form>
+                    <div class="text-center text-muted mt-2">
+                        Uses the same selection recipe (RGB, top 30% complex pixels, your key).
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </section>
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
@@ -107,43 +195,49 @@
 <div class="modal fade" id="locationModal" tabindex="-1" aria-labelledby="locationModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title text-center" id="locationModalLabel">
-                <b class="text-danger">
-                    Step 4: Enter some text or upload a file to be used as your payload
-                </b>
-            </h5>
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-              <span aria-hidden="true">&times;</span>
-            </button>
-          </div>
-          <div class="modal-body">
-              <div class="form-group">
-                  <label class="form-label" for="textPayload">Text Input</label>
-                  <textarea id="textPayload" rows="4" class="form-control"></textarea>
-              </div>
-              <div class="text-center my-2">
-                  <b>OR</b>
-              </div>
-              <div class="mt-2">
-                  <input class="form-control" type="file" id="payloadFile" name="payloadFile"
-                         accept=".exe,.txt,.pdf,image/*">
-                  <button class="btn btn-sm btn-danger d-none" id="removePayloadBtn">Remove file</button>
-                  <p class="text-danger mt-2">File must be text, image, exe, or pdf type</p>
+            <div class="modal-header">
+                <h5 class="modal-title text-center" id="locationModalLabel">
+                    <b class="text-danger">
+                        Step 4: Enter some text or upload a file to be used as your payload
+                    </b>
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="textPayload">Text Input</label>
+                    <!-- Bind to main form via form attribute -->
+                    <textarea id="textPayload" name="textPayload" rows="4" class="form-control" form="stegoForm"></textarea>
+                </div>
+                <div class="text-center my-2">
+                    <b>OR</b>
+                </div>
+                <div class="mt-2">
+                    <!-- Bind to main form via form attribute -->
+                    <input class="form-control" type="file" id="payloadFile" name="payloadFile"
+                        accept=".exe,.txt,.pdf,image/*" form="stegoForm">
+                    <button class="btn btn-sm btn-danger d-none" id="removePayloadBtn">Remove file</button>
+                    <p class="text-danger mt-2">File must be text, image, exe, or pdf type</p>
 
-                  <hr class="w-100" />
-                  <div class="text-center">
-                      <b>Capacity info</b>
-                  </div>
-                  <div id="capacityInfo" class="mt-2 text-center text-muted">
-                    Waiting for payload input...
-                  </div>
-              </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-            <button type="button" class="btn btn-success" id="hideBtn">Hide my data!</button>
-          </div>
+                    <hr class="w-100" />
+                    <div class="text-center">
+                        <b>Capacity info</b>
+                    </div>
+                    <div id="capacityInfo" class="mt-2 text-center text-muted">
+                        Waiting for payload input...
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <!-- Submit the main form directly to /embed -->
+                <button type="submit" class="btn btn-success"
+                        form="stegoForm" formaction="/embed" formmethod="post">
+                    Hide my data!
+                </button>
+            </div>
         </div>
     </div>
 </div>
