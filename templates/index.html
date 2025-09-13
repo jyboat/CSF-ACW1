@@ -128,50 +128,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Detect header (image) -->
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="card p-3">
-                <div class="card-title text-center">
-                    <b class="text-danger">Detect header (image)</b>
-                </div>
-                <div class="card-body">
-                    <form enctype="multipart/form-data" method="post" action="/detect">
-                        <div class="mb-3">
-                            <label class="form-label">Suspected stego Image / Audio</label>
-                            <input class="form-control" type="file" name="stegoFile" accept=".png,.bmp,.gif" required>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <label class="form-label">LSBs</label>
-                                <select class="custom-select md-form md-outline d-block" name="lsbCount" required>
-                                    <option selected value="1">1</option>
-                                    <option value="2">2</option>
-                                    <option value="3">3</option>
-                                    <option value="4">4</option>
-                                    <option value="5">5</option>
-                                    <option value="6">6</option>
-                                    <option value="7">7</option>
-                                    <option value="8">8</option>
-                                </select>
-                            </div>
-                            <div class="col-md-8">
-                                <label class="form-label">Key</label>
-                                <input class="form-control" type="number" name="stegoKey" required>
-                            </div>
-                        </div>
-                        <div class="text-center mt-3">
-                            <button class="btn btn-warning">Detect header</button>
-                        </div>
-                    </form>
-                    <div class="text-center text-muted mt-2">
-                        Uses the same selection recipe (RGB, top 30% complex pixels, your key).
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </section>
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
