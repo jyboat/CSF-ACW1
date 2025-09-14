@@ -20,7 +20,7 @@ from capacity import (
 )
 
 # data_comparison helpers
-from data_comparison import save_images_to_session, compute_pixel_diff
+from data_comparison import save_images_to_session, save_audio_to_session, compute_pixel_diff, compute_audio_diff
 
 # lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
@@ -186,8 +186,8 @@ def index():
 
 @app.route("/results")
 def results():
-    cover_filepath = session.get("cover_image")
-    stego_filepath = session.get("stego_image")
+    cover_filepath = session.get("cover")
+    stego_filepath = session.get("stego")
 
     if not cover_filepath or not stego_filepath:
         flash("No current files found. Please embed your file first.", "error")
@@ -195,13 +195,14 @@ def results():
 
     if cover_filepath.lower().endswith(".png") and stego_filepath.lower().endswith(".png"):
         media_type = "img"
+        difference = compute_pixel_diff(cover_filepath, stego_filepath)
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
         media_type = "audio"
+        difference = compute_audio_diff(cover_filepath, stego_filepath)
     else:
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
 
-    difference = compute_pixel_diff(cover_filepath, stego_filepath)
     return render_template(
         "results.html",
         cover_filepath=cover_filepath,
@@ -374,6 +375,12 @@ def embed_media():
                 return redirect(url_for("index"))
 
             stego_wav = _embed_audio_wav(cover_bytes, payload_bytes, k=lsb, key=key)
+
+            try:
+                save_audio_to_session(cover_bytes, stego_wav)
+            except Exception:
+                pass
+
             return send_file(
                 io.BytesIO(stego_wav),
                 mimetype="audio/wav",
