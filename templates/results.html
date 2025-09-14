@@ -23,7 +23,7 @@
               <div class="col-md-6">
                 <div class="section-box" id="section-box">
                   <h5>Original Cover Object</h5>
-                <img src="static/dummy/cover.png" class="cover-image" id="coverImage">
+                <img src="{{ url_for('static', filename=cover_filepath) }}" class="cover-image" id="coverImage">
             
                 <h6 class="mt-3">Metadata</h6>
                 <ul>
@@ -38,7 +38,7 @@
               <div class="col-md-6">
                 <div class="section-box" id="section-box">
                   <h5>Stego Object</h5>
-                  <img src="static/dummy/cover.png" class="cover-image" id="stegoImage">
+                  <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
                 
                   <h6 class="mt-3">Metadata</h6>
                   <ul>

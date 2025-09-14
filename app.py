@@ -1,5 +1,7 @@
 from flask_toastr import Toastr
+from flask import session
 from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, is_image_extension, load_image_meta, compute_capacity_bytes_image
+from data_comparison import save_images_to_session, compute_pixel_diff
 from typing import Any
 import io
 import os
@@ -192,6 +194,33 @@ def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
 def index():
     return render_template("index.html")
 
+@app.route('/results')
+def results():
+    cover_filepath = session.get("cover_image")
+    stego_filepath = session.get("stego_image")
+    
+    if not cover_filepath or not stego_filepath:
+        flash("No current files found. Please embed your file first.", "error")
+        return redirect(url_for("index"))
+
+    if cover_filepath.lower().endswith(".png") and stego_filepath.lower().endswith(".png"):
+        media_type = "img"
+    elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
+        media_type = "audio"
+    else:
+        flash("File incompatible. Please embed your file first.", "error")
+        return redirect(url_for("index"))
+    
+    difference = compute_pixel_diff(cover_filepath, stego_filepath)
+    print(difference)
+
+    # TODO: In the HTML, use media_type to decide whether to display img or audio
+    return render_template('results.html',
+                           cover_filepath=cover_filepath,
+                           stego_filepath=stego_filepath,
+                           media_type=media_type,
+                           difference=difference
+                           )
 
 @app.route("/check", methods=["POST"])
 def check_capacity_form():
@@ -329,6 +358,10 @@ def embed_media():
                 flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
             )
             stego_png = flat_to_image(stego_flat, shape, mode="RGB")
+            
+            if not save_images_to_session(cover_bytes, stego_png):
+                raise RuntimeError("Failed to save images to session")
+
             return send_file(
                 io.BytesIO(stego_png),
                 mimetype="image/png",
