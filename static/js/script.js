@@ -238,48 +238,103 @@ $(document).ready(function () {
         $form.submit();
     });
 
+    let lastCapacityBytes = null;  // latest capacity from /api/check-capacity
+    let lastCheckOk = false;
+    let checking = false;
+    let pendingTimer = null;
+
+    // Changed checkCapacity to use backend limit checks instead of rough estimates
     function checkCapacity(strict = false) {
         const coverFile = $fileInput[0].files[0];
         const lsbCount = parseInt($lsbCount.val(), 10) || 0;
 
-        if (!coverFile || lsbCount <= 0) {
-            $capacityInfo.text("Waiting for cover and LSB selection...");
-            $hideBtn.prop("disabled", true)
-            return false;
-        }
-
-        const coverCapacityBits = coverFile.size * lsbCount;
-
+        // Compute current payload size (bytes)
         let payloadSizeBytes = 0;
-        if ($textPayload.val().trim()) {
-            payloadSizeBytes = new Blob([$textPayload.val().trim()]).size;
+        const textVal = $textPayload.val().trim();
+        if (textVal) {
+            payloadSizeBytes = new Blob([textVal]).size;
         } else if ($payloadFile[0].files.length > 0) {
             payloadSizeBytes = $payloadFile[0].files[0].size;
         }
 
-        const payloadBits = payloadSizeBytes * 8;
-
-        if (payloadBits === 0) {
-            $capacityInfo.text("Waiting for payload input...");
-            $hideBtn.prop("disabled", true)
+        if (!coverFile || lsbCount <= 0) {
+            $capacityInfo.text("Waiting for cover and LSB selection...");
+            $hideBtn.prop("disabled", true);
+            lastCapacityBytes = null;
+            lastCheckOk = false;
             return false;
         }
 
-        if (coverCapacityBits >= payloadBits) {
-            $capacityInfo
-                .text(`Sufficient: Cover capacity ${coverCapacityBits} bits, Payload requires ${payloadBits} bits.`)
-                .removeClass("text-danger")
-                .addClass("text-success");
-            $hideBtn.prop("disabled", false)
-            return true;
+        if (lastCapacityBytes !== null) {
+            const ok = payloadSizeBytes <= lastCapacityBytes;
+            updateCapacityText(lastCapacityBytes, payloadSizeBytes, ok);
+            $hideBtn.prop("disabled", !ok);
+            lastCheckOk = ok;
+            if (strict) return ok;
         } else {
-            $capacityInfo
-                .text(`Insufficient: Cover capacity ${coverCapacityBits} bits, Payload requires ${payloadBits} bits.
-                Please reduce payload size, or increase cover size.`)
-                .removeClass("text-success")
-                .addClass("text-danger");
-            $hideBtn.prop("disabled", true)
-            return false;
+            $capacityInfo.text("Calculating capacity...");
+            $hideBtn.prop("disabled", true);
+            if (strict) return false;
         }
+
+        if (pendingTimer) clearTimeout(pendingTimer);
+        pendingTimer = setTimeout(() => fetchCapacity(coverFile, lsbCount, payloadSizeBytes), 250);
+
+        return lastCheckOk;
     }
+
+    // Helper function to call /api/check-capacity
+    function fetchCapacity(coverFile, lsbCount, payloadSizeBytes) {
+        if (checking) return;
+        checking = true;
+
+        const fd = new FormData();
+        fd.append("coverFile", coverFile);
+        fd.append("lsbCount", String(lsbCount));
+
+        fetch("/api/check-capacity", { method: "POST", body: fd })
+            .then(res => res.json().then(data => ({ ok: res.ok, data })))
+            .then(({ ok, data }) => {
+                checking = false;
+                if (!ok || !data.ok) {
+                    const msg = (data && (data.error || data.message)) || "Capacity check failed.";
+                    $capacityInfo.text(msg).removeClass("text-success").addClass("text-danger");
+                    $hideBtn.prop("disabled", true);
+                    lastCapacityBytes = null;
+                    lastCheckOk = false;
+                    return;
+                }
+                lastCapacityBytes = data.capacity_bytes;
+
+                const okFit = payloadSizeBytes <= lastCapacityBytes;
+                updateCapacityText(lastCapacityBytes, payloadSizeBytes, okFit);
+                $hideBtn.prop("disabled", !okFit);
+                lastCheckOk = okFit;
+            })
+            .catch(err => {
+                checking = false;
+                $capacityInfo.text("Capacity check failed.").removeClass("text-success").addClass("text-danger");
+                $hideBtn.prop("disabled", true);
+                lastCapacityBytes = null;
+                lastCheckOk = false;
+                console.error(err);
+            });
+           }
+
+        // Helper function to update capacity info text
+        function updateCapacityText(capacityBytes, payloadBytes, ok) {
+            const capBits = capacityBytes * 8;
+            const payBits = payloadBytes * 8;
+            if (ok) {
+                $capacityInfo
+                    .text(`Sufficient: Cover capacity ${capBits} bits (${capacityBytes} bytes), Payload requires ${payBits} bits (${payloadBytes} bytes).`)
+                    .removeClass("text-danger")
+                    .addClass("text-success");
+            } else {
+                $capacityInfo
+                    .text(`Insufficient: Cover capacity ${capBits} bits (${capacityBytes} bytes), Payload requires ${payBits} bits (${payloadBytes} bytes). Please reduce payload size, or increase LSBs.`)
+                    .removeClass("text-success")
+                    .addClass("text-danger");
+            }
+        }
 });
