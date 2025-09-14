@@ -1,5 +1,4 @@
 from flask_toastr import Toastr
-from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, is_image_extension, load_image_meta, compute_capacity_bytes_image
 from typing import Any
 import io
 import os
@@ -175,6 +174,12 @@ def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str) -> byte
     # Reuse your robust header + keyed XOR + LSB function
     stego = embed_xor_lsb_at_indices(work, payload, k=k, key=key, indices=indices)
 
+    mask = (1 << k) - 1
+    orig_lsb = (samples & mask)
+    stego_lsb = (stego & mask)
+    lsb_changed = (orig_lsb != stego_lsb)
+    changed_samples = int(lsb_changed.sum())
+
     # Pack back to WAV
     return _np_to_wav_bytes(stego, params)
 
@@ -328,6 +333,15 @@ def embed_media():
             stego_flat = embed_xor_lsb_at_indices(
                 flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
             )
+
+            # ---------- CALCULATION OF CHANGES IN LSB OF COVER OBJECT ----------------
+            mask = (1 << lsb) - 1
+            orig_lsb = (flat_cover & mask)
+            stego_lsb = (stego_flat & mask)
+            lsb_changed = (orig_lsb != stego_lsb)  # boolean array
+            changed_bits = int(lsb_changed.sum())  # count of bytes whose LSBs differ
+            total_bits = lsb * int(lsb_changed.size)  # total LSB positions considered
+
             stego_png = flat_to_image(stego_flat, shape, mode="RGB")
             return send_file(
                 io.BytesIO(stego_png),
@@ -354,6 +368,7 @@ def embed_media():
                 return redirect(url_for("index"))
 
             stego_wav = _embed_audio_wav(cover_bytes, payload_bytes, k=lsb, key=key)
+
             return send_file(
                 io.BytesIO(stego_wav),
                 mimetype="audio/wav",
