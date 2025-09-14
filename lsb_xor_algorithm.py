@@ -154,34 +154,34 @@ def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.
 
 # Run immediately
 
-cover_path = "test/img_rgb_100x100_RGB.png"
-payload_path = "test/payload_900B.bin"
-stego_out_path = "stego_rgb_100x100.png"
+# cover_path = "test/img_rgb_100x100_RGB.png"
+# payload_path = "test/payload_900B.bin"
+# stego_out_path = "stego_rgb_100x100.png"
 
-k = 2
-top_percent = 30
-key = "secret"
+# k = 2
+# top_percent = 30
+# key = "secret"
 
-with open(cover_path, "rb") as f:
-    cover_bytes = f.read()
-with open(payload_path, "rb") as f:
-    payload_bytes = f.read()
+# with open(cover_path, "rb") as f:
+#     cover_bytes = f.read()
+# with open(payload_path, "rb") as f:
+#     payload_bytes = f.read()
 
-flat_cover, shape, mode, eligible = select_complex_indices_from_image(
-    cover_bytes, top_percent=top_percent, mode="RGB", key=key
-)
+# flat_cover, shape, mode, eligible = select_complex_indices_from_image(
+#     cover_bytes, top_percent=top_percent, mode="RGB", key=key
+# )
 
-bits_needed = (16 + len(payload_bytes)) * 8
-bits_available = len(eligible) * k
-if bits_needed > bits_available:
-    raise SystemExit("Payload too large")
+# bits_needed = (16 + len(payload_bytes)) * 8
+# bits_available = len(eligible) * k
+# if bits_needed > bits_available:
+#     raise SystemExit("Payload too large")
 
-stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=k, key=key, indices=eligible)
+# stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=k, key=key, indices=eligible)
 
-stego_bytes = flat_to_image(stego_flat, shape, mode)
-with open(stego_out_path, "wb") as f:
-    f.write(stego_bytes)
-print(f"Stego saved to {stego_out_path}")
+# stego_bytes = flat_to_image(stego_flat, shape, mode)
+# with open(stego_out_path, "wb") as f:
+#     f.write(stego_bytes)
+# print(f"Stego saved to {stego_out_path}")
 
-recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
-print("Payload match?", recovered == payload_bytes)
+# recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
+# print("Payload match?", recovered == payload_bytes)

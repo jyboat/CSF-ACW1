@@ -1,16 +1,13 @@
 from flask_toastr import Toastr
-from flask import session
-from capacity import is_wav_extension, load_audio_meta, compute_capacity_bytes, is_image_extension, load_image_meta, compute_capacity_bytes_image
-from data_comparison import save_images_to_session, compute_pixel_diff
+from flask import (
+    Flask, request, render_template, redirect, url_for,
+    flash, send_file, jsonify, session
+)
 from typing import Any
 import io
 import os
 import wave
 import numpy as np
-from flask import (
-    Flask, request, render_template, redirect, url_for,
-    flash, send_file, jsonify
-)
 
 # capacity.py
 from capacity import (
@@ -21,6 +18,9 @@ from capacity import (
     compute_capacity_bytes,
     compute_capacity_bytes_image,
 )
+
+# data_comparison helpers
+from data_comparison import save_images_to_session, compute_pixel_diff
 
 # lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
@@ -36,7 +36,6 @@ from lsb_xor_algorithm import (
 app = Flask(__name__)
 toastr = Toastr(app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
-
 
 # =====================================================
 # =============== WAV / PCM AUDIO HELPERS =============
@@ -70,21 +69,16 @@ def _wav_bytes_to_np(wav_bytes: bytes):
         raise ValueError("Compressed WAV not supported. Use PCM (uncompressed).")
 
     if sampwidth == 1:
-        # 8-bit PCM is unsigned
         samples = np.frombuffer(frames, dtype=np.uint8).copy()
         dtype = np.uint8
     elif sampwidth == 2:
-        # 16-bit little-endian signed
         samples = np.frombuffer(frames, dtype="<i2").copy()
         dtype = np.int16
     elif sampwidth == 3:
-        # 24-bit little-endian signed -> expand to int32
         b = np.frombuffer(frames, dtype=np.uint8).reshape(-1, 3)
-        # little-endian combine
         s = (b[:, 0].astype(np.uint32)
              | (b[:, 1].astype(np.uint32) << 8)
              | (b[:, 2].astype(np.uint32) << 16))
-        # sign extend from 24-bit to 32-bit
         sign = (s & 0x800000) != 0
         s_signed = s.astype(np.int32)
         s_signed[sign] -= (1 << 24)
@@ -110,13 +104,10 @@ def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
     sampwidth = params["sampwidth"]
     framerate = params["framerate"]
 
-    # Ensure contiguous
     samples = np.ascontiguousarray(samples)
 
     if sampwidth == 1:
-        # uint8
         if samples.dtype != np.uint8:
-            # clip and cast
             samples = np.clip(samples, 0, 255).astype(np.uint8)
         frames_bytes = samples.tobytes()
     elif sampwidth == 2:
@@ -124,10 +115,8 @@ def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
             samples = np.clip(samples, -32768, 32767).astype("<i2")
         frames_bytes = samples.astype("<i2").tobytes()
     elif sampwidth == 3:
-        # clamp to 24-bit range, then pack to 3 bytes LE
         s = samples.astype(np.int32)
         s = np.clip(s, -(1 << 23), (1 << 23) - 1)
-        # Convert to unsigned representation for packing
         s_u = s.copy()
         neg = s_u < 0
         s_u[neg] += (1 << 24)
@@ -143,7 +132,6 @@ def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
         w.setnchannels(n_channels)
         w.setsampwidth(sampwidth)
         w.setframerate(framerate)
-        # nframes inferred from writeframes
         w.writeframes(frames_bytes)
     return bio_out.getvalue()
 
@@ -160,7 +148,6 @@ def _select_audio_indices(samples: np.ndarray, key: str, top_percent: int | None
 
 def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str) -> bytes:
     samples, params = _wav_bytes_to_np(wav_bytes)
-
     # Choose indices (all samples shuffled for now)
     indices = _select_audio_indices(samples, key)
 
@@ -176,7 +163,7 @@ def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str) -> byte
 
     # Reuse your robust header + keyed XOR + LSB function
     stego = embed_xor_lsb_at_indices(work, payload, k=k, key=key, indices=indices)
-
+    
     # Pack back to WAV
     return _np_to_wav_bytes(stego, params)
 
@@ -190,15 +177,18 @@ def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
 # ==================== ROUTES =========================
 # =====================================================
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET", "POST"])
 def index():
+    # If the main form posts to "/", delegate to the embed logic.
+    if request.method == "POST":
+        return embed_media()
     return render_template("index.html")
 
-@app.route('/results')
+@app.route("/results")
 def results():
     cover_filepath = session.get("cover_image")
     stego_filepath = session.get("stego_image")
-    
+
     if not cover_filepath or not stego_filepath:
         flash("No current files found. Please embed your file first.", "error")
         return redirect(url_for("index"))
@@ -210,17 +200,15 @@ def results():
     else:
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
-    
-    difference = compute_pixel_diff(cover_filepath, stego_filepath)
-    print(difference)
 
-    # TODO: In the HTML, use media_type to decide whether to display img or audio
-    return render_template('results.html',
-                           cover_filepath=cover_filepath,
-                           stego_filepath=stego_filepath,
-                           media_type=media_type,
-                           difference=difference
-                           )
+    difference = compute_pixel_diff(cover_filepath, stego_filepath)
+    return render_template(
+        "results.html",
+        cover_filepath=cover_filepath,
+        stego_filepath=stego_filepath,
+        media_type=media_type,
+        difference=difference,
+    )
 
 @app.route("/check", methods=["POST"])
 def check_capacity_form():
@@ -259,7 +247,6 @@ def check_capacity_form():
 
     return redirect(url_for("index"))
 
-
 @app.route("/api/check-capacity", methods=["POST"])
 def api_check_capacity():
     cover = request.files.get("coverFile")
@@ -291,11 +278,10 @@ def api_check_capacity():
 
     return jsonify({"ok": True, "capacity_bytes": cap})
 
-
 @app.route("/embed", methods=["POST"])
 def embed_media():
     """
-    Embed payload into an IMAGE (PNG/BMP/GIF) or AUDIO (WAV) using your LSB+XOR engine.
+    Embed payload into an IMAGE (PNG/BMP/GIF) or AUDIO (WAV) using LSB+XOR engine.
     """
     cover = request.files.get("coverFile")
     lsb_str = request.form.get("lsbCount", "1")
@@ -328,7 +314,6 @@ def embed_media():
         return redirect(url_for("index"))
 
     payload_bytes = text_payload_str.encode("utf-8") if text_payload_str else payload_file.read()
-
     cover_bytes = cover.read()
 
     # -------- IMAGE PATH --------
@@ -358,9 +343,12 @@ def embed_media():
                 flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
             )
             stego_png = flat_to_image(stego_flat, shape, mode="RGB")
-            
-            if not save_images_to_session(cover_bytes, stego_png):
-                raise RuntimeError("Failed to save images to session")
+
+            # Best-effort session save; don't fail the request if it can't be saved.
+            try:
+                save_images_to_session(cover_bytes, stego_png)
+            except Exception:
+                pass
 
             return send_file(
                 io.BytesIO(stego_png),
@@ -380,7 +368,6 @@ def embed_media():
                 flash("WAV must be 8/16/24-bit PCM.", "error")
                 return redirect(url_for("index"))
 
-            # Theoretical capacity (all samples)
             capacity_bytes = compute_capacity_bytes(meta, lsb)
             if len(payload_bytes) > capacity_bytes:
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
