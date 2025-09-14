@@ -135,7 +135,7 @@ def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
         w.writeframes(frames_bytes)
     return bio_out.getvalue()
 
-def _select_audio_indices(samples: np.ndarray, key: str, top_percent: int | None = None) -> np.ndarray:
+def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     """
     For now: use ALL sample positions, shuffled by key.
     (You can later swap to an energy-based selection and keep the same shape.)

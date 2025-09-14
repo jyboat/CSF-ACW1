@@ -13,8 +13,6 @@ $(document).ready(function () {
 
     const $textPayload = $("#textPayload");
     const $payloadFile = $("#payloadFile");
-    const $hiddenTextPayload = $("#hiddenTextPayload");
-    const $hiddenFilePayload = $("#hiddenFilePayload");
     const $removePayloadBtn = $("#removePayloadBtn");
     const $hideBtn = $("#hideBtn");
     const $form = $("#stegoForm");
@@ -124,11 +122,48 @@ $(document).ready(function () {
             return; // no file, do nothing
         }
 
-        // Calculate where user clicked
-        const offset = $(this).offset();
-        const x = e.pageX - offset.left;
-        const y = e.pageY - offset.top;
-        console.log("Clicked at:", x, y);
+        const file = $fileInput[0].files[0];
+        const fileType = file.type;
+
+        if (fileType.startsWith("image/")) {
+            // ===== IMAGE CLICK =====
+            const offset = $(this).offset();
+            const x = e.pageX - offset.left;
+            const y = e.pageY - offset.top;
+
+            // Save clicked coordinates
+            $("#startX").val(Math.round(x));
+            $("#startY").val(Math.round(y));
+            $("#startSample").val(""); // clear audio field
+
+            console.log("Image start location:", Math.round(x), Math.round(y));
+
+        } else if (fileType.startsWith("audio/") || file.name.endsWith(".wav") || file.name.endsWith(".pcm")) {
+            // ===== AUDIO CLICK =====
+            if (wavesurfer) {
+                const boxWidth = $previewBox.width();
+                const clickRatio = (e.pageX - $previewBox.offset().left) / boxWidth;
+                const duration = wavesurfer.getDuration();
+                const time = duration * clickRatio;
+
+                // Get decoded audio buffer
+                const audioBuffer = wavesurfer.getDecodedData();
+                if (audioBuffer) {
+                    const sampleRate = audioBuffer.sampleRate;
+                    const sampleIndex = Math.floor(time * sampleRate);
+
+                    // Save clicked audio location
+                    $("#startSample").val(sampleIndex);
+                    $("#startX").val(""); // clear image fields
+                    $("#startY").val("");
+
+                    console.log("Audio start location: sample index", sampleIndex);
+                }
+                else {
+                    console.log("No decoded audio data available");
+                }
+            }
+        }
 
         // Show Bootstrap modal
         const locationModal = new bootstrap.Modal(document.getElementById('locationModal'));
@@ -215,23 +250,6 @@ $(document).ready(function () {
         if (!checkCapacity(true)) {
             toastr.error("Insufficient cover capacity for this payload. Please choose fewer payload bits, reduce payload size, or increase LSBs.");
             return;
-        }
-
-        // Clear previous hidden values
-        $hiddenTextPayload.val("");
-        $hiddenFilePayload.val("");
-
-        if (textVal) {
-            // Pass text to hidden field
-            $hiddenTextPayload.val(textVal);
-        } else if (fileVal) {
-            // Copy file to hidden file input
-            const file = $payloadFile[0].files[0];
-
-            // Trick: assign the file to the hidden input using DataTransfer
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-            $hiddenFilePayload[0].files = dataTransfer.files;
         }
 
         // Submit the main form
