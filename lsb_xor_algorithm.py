@@ -2,6 +2,7 @@ import io, struct, hashlib, random
 from dataclasses import dataclass
 import numpy as np
 from PIL import Image
+import matplotlib.pyplot as plt
 
 # Image helpers
 
@@ -154,34 +155,102 @@ def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.
 
 # Run immediately
 
+cover_path = "test/img_rgb_100x100_RGB.png"
+payload_path = "test/payload_900B.bin"
+stego_out_path = "stego_rgb_100x100.png"
+
+k = 2
+top_percent = 30
+key = "secret"
+
+with open(cover_path, "rb") as f:
+    cover_bytes = f.read()
+with open(payload_path, "rb") as f:
+    payload_bytes = f.read()
+
+flat_cover, shape, mode, eligible = select_complex_indices_from_image(
+    cover_bytes, top_percent=top_percent, mode="RGB", key=key
+)
+
+bits_needed = (16 + len(payload_bytes)) * 8
+bits_available = len(eligible) * k
+if bits_needed > bits_available:
+    raise SystemExit("Payload too large")
+
+stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=k, key=key, indices=eligible)
+
+stego_bytes = flat_to_image(stego_flat, shape, mode)
+with open(stego_out_path, "wb") as f:
+    f.write(stego_bytes)
+print(f"Stego saved to {stego_out_path}")
+
+recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
+print("Payload match?", recovered == payload_bytes)
+
+# Pixel Intensity Plot
 # cover_path = "test/img_rgb_100x100_RGB.png"
-# payload_path = "test/payload_900B.bin"
 # stego_out_path = "stego_rgb_100x100.png"
 
-# k = 2
-# top_percent = 30
-# key = "secret"
+## Convert to grayscale
+# cover_img = Image.open(cover_path).convert("L")  
+# stego_img = Image.open(stego_out_path).convert("L")
 
-# with open(cover_path, "rb") as f:
-#     cover_bytes = f.read()
-# with open(payload_path, "rb") as f:
-#     payload_bytes = f.read()
+## Convert to NumPy arrays
+# cover_arr = np.array(cover_img).ravel()
+# stego_arr = np.array(stego_img).ravel()
 
-# flat_cover, shape, mode, eligible = select_complex_indices_from_image(
-#     cover_bytes, top_percent=top_percent, mode="RGB", key=key
-# )
+# # Plot histograms
+# plt.figure(figsize=(12, 5))
 
-# bits_needed = (16 + len(payload_bytes)) * 8
-# bits_available = len(eligible) * k
-# if bits_needed > bits_available:
-#     raise SystemExit("Payload too large")
+## 8-bit grayscale image, each pixel intensity is an integer in the range 0–255.
+# plt.subplot(1, 2, 1)
+# plt.hist(cover_arr, bins=256, range=(0, 255), color="blue", alpha=0.7)
+# plt.title("Histogram of Cover Image")
+# plt.xlabel("Pixel Intensity")
+# plt.ylabel("Number of Pixels")
 
-# stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=k, key=key, indices=eligible)
+## For Steg image
+# plt.subplot(1, 2, 2)
+# plt.hist(stego_arr, bins=256, range=(0, 255), color="green", alpha=0.7)
+# plt.title("Histogram of Stego Image")
+# plt.xlabel("Pixel Intensity")
+# plt.ylabel("Number of Pixels")
 
-# stego_bytes = flat_to_image(stego_flat, shape, mode)
-# with open(stego_out_path, "wb") as f:
-#     f.write(stego_bytes)
-# print(f"Stego saved to {stego_out_path}")
+# plt.tight_layout()
+# plt.show()
 
-# recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
-# print("Payload match?", recovered == payload_bytes)
+# RGB Analysis Plot
+cover_img = Image.open("test/img_rgb_100x100_RGB.png").convert("RGB")
+stego_img = Image.open("stego_rgb_100x100.png").convert("RGB")
+
+# Convert the images to NumPy arrays of shape 
+# Shape = (height, width, 3)
+cover_arr = np.array(cover_img)
+stego_arr = np.array(stego_img)
+
+channel_names = ["Red", "Green", "Blue"]
+colors = ["red", "green", "blue"]
+
+plt.figure(figsize=(15, 6))
+
+# indexes the channel (0=Red, 1=Green, 2=Blue)
+for i, name in enumerate(["Red", "Green", "Blue"]):
+    ax = plt.subplot(1, 3, i+1)
+    c = cover_arr[..., i].ravel()
+    s = stego_arr[..., i].ravel()
+
+    # Stego: 
+    ax.hist(s, bins=np.arange(257), range=(0, 256),
+            histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
+
+    # Cover: 
+    ax.hist(c, bins=np.arange(257), range=(0, 256),
+            histtype="stepfilled", linewidth=1.0, label="Cover", color="black",)
+
+    ax.set_title(f"{name} channel")
+    ax.set_xlabel("Pixel intensity"); ax.set_ylabel("No. of pixels")
+    ax.set_xlim(0, 255); 
+    ax.legend()
+
+plt.tight_layout()
+plt.show()
