@@ -46,6 +46,7 @@
                         <input type="hidden" id="startX" name="startX">
                         <input type="hidden" id="startY" name="startY">
                         <input type="hidden" id="startSample" name="startSample">
+                        <input type="hidden" id="useComplex" name="useComplex" value="">
                     </div>
                 </div>
             </div>
@@ -82,7 +83,15 @@
                         </div>
 
                         <div id="step3Text" class="text-center mt-2" style="display: none;">
-                            <b class="text-danger">Step 3: Click a location on your file to hide your data</b>
+                            <b class="text-danger">
+                                Step 3: Click a location on your file as a starting location to hide your data or
+                                press the button below to skip choosing a starting location
+                            </b>
+                            <br />
+                            <button class="btn-sm btn-primary btn" type="button" data-target="#locationModal"
+                                    data-toggle="modal" id="skipBtn">
+                                Upload payload
+                            </button>
                         </div>
                     </div>
                 </div>

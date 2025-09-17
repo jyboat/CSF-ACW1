@@ -112,6 +112,10 @@ $(document).ready(function () {
         checkCapacity();
     });
 
+    $("#skipBtn").on("click", function() {
+        $("#useComplex").val("1");
+    })
+
     $textPayload.on("input", checkCapacity);
     $lsbCount.on("change", checkCapacity);
 
@@ -124,6 +128,8 @@ $(document).ready(function () {
 
         const file = $fileInput[0].files[0];
         const fileType = file.type;
+
+        $("#useComplex").val(""); // clear use complex flag
 
         if (fileType.startsWith("image/")) {
             // ===== IMAGE CLICK =====

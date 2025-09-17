@@ -292,7 +292,7 @@ def embed_media():
     text_payload_str = request.form.get("textPayload", "")
     payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
     start_sample_str = request.form.get("startSample", "").strip()
-    auto_flag = (request.form.get("autoStart") or request.form.get("useComplexAuto") or "").strip().lower()
+    auto_flag = (request.form.get("autoStart") or request.form.get("useComplex") or "").strip().lower()
     use_complex = auto_flag in {"1", "true", "on", "yes"}
     start_sample = int(start_sample_str) if start_sample_str.isdigit() else 0
 

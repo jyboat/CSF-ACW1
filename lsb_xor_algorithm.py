@@ -265,9 +265,9 @@ for i, name in enumerate(["Red", "Green", "Blue"]):
 plt.tight_layout()
 plt.show()
 
-def make_audio_header(payload: bytes, start_sample: int, use_complex_auto: bool) -> bytes:
+def make_audio_header(payload: bytes, start_sample: int, use_complex: bool) -> bytes:
     sha8 = hashlib.sha256(payload).digest()[:8]
-    flags = 1 if use_complex_auto else 0
+    flags = 1 if use_complex else 0
     return (AudioHeader.magic +
             _struct.pack("<I", len(payload)) + sha8 +
             _struct.pack("<Q", int(start_sample)) +
@@ -303,7 +303,7 @@ def build_indices_for_audio_with_start(
     k_bits: int,
     payload_nbytes: int,
     start_sample: int,
-    use_complex_auto: bool = False,
+    use_complex: bool = False,
     complex_top_percent: int = 30,
 ) -> tuple[np.ndarray, int]:
     n = samples.size
@@ -316,7 +316,7 @@ def build_indices_for_audio_with_start(
     if hdr_groups > n: raise ValueError("Cover too small for audio header")
     hdr_idx = perm[:hdr_groups]
 
-    if use_complex_auto:
+    if use_complex:
         complex_idx = select_complex_audio_indices(samples, top_percent=complex_top_percent)
         hdr_set = set(int(i) for i in hdr_idx)
         complex_idx = np.array([i for i in complex_idx if int(i) not in hdr_set], dtype=np.int64)
@@ -339,12 +339,12 @@ def build_indices_for_audio_with_start(
     return indices_all, hdr_groups
 
 def embed_xor_lsb_audio(samples: np.ndarray, payload: bytes, k: int, key: str,
-                           start_sample: int, use_complex_auto: bool = False) -> np.ndarray:
+                           start_sample: int, use_complex: bool = False) -> np.ndarray:
     from lsb_xor_algorithm import keystream_bits  # reuse existing keystream
     indices_all, hdr_groups = build_indices_for_audio_with_start(
-        samples, key, k, len(payload), start_sample, use_complex_auto
+        samples, key, k, len(payload), start_sample, use_complex
     )
-    hdr_bytes = make_audio_header(payload, start_sample, use_complex_auto)
+    hdr_bytes = make_audio_header(payload, start_sample, use_complex)
     hdr_bits = np.unpackbits(np.frombuffer(hdr_bytes, dtype=np.uint8))
     pay_bits = np.unpackbits(np.frombuffer(payload, dtype=np.uint8))
     C_hdr = hdr_bits ^ keystream_bits(key, hdr_bits.size)
@@ -392,7 +392,7 @@ def extract_xor_lsb_audio(stego: np.ndarray, k: int, key: str):
     # rebuild indices incl. payload
     indices_all, hdr_groups_check = build_indices_for_audio_with_start(
         stego, key, k, hdr.length, start_sample=int(hdr.start_sample),
-        use_complex_auto=bool(hdr.flags & 1)
+        use_complex=bool(hdr.flags & 1)
     )
     assert hdr_groups_check == hdr_groups
 
