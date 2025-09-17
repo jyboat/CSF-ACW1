@@ -29,8 +29,7 @@ from lsb_xor_algorithm import (
     extract_xor_lsb_at_indices,
     flat_to_image,
     image_to_flat,
-    embed_xor_lsb_audio, extract_xor_lsb_audio,
-    build_indices_for_audio_with_start
+    embed_xor_lsb_audio, extract_xor_lsb_audio
 )
 
 # ------------------------------------------------------
@@ -149,7 +148,7 @@ def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     return idx
 
 def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
-                     start_sample: int = 0, use_complex_auto: bool = False) -> bytes:
+                     start_sample: int = 0, use_complex: bool = False) -> bytes:
     samples, params = _wav_bytes_to_np(wav_bytes)
     # Choose indices (all samples shuffled for now)
     indices = _select_audio_indices(samples, key)
@@ -166,7 +165,7 @@ def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
 
     # Reuse your robust header + keyed XOR + LSB function
     stego = embed_xor_lsb_audio(work, payload, k=k, key=key, start_sample=start_sample,
-                                   use_complex_auto=use_complex_auto)
+                                   use_complex=use_complex)
     
     # Pack back to WAV
     return _np_to_wav_bytes(stego, params)
@@ -294,7 +293,7 @@ def embed_media():
     payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
     start_sample_str = request.form.get("startSample", "").strip()
     auto_flag = (request.form.get("autoStart") or request.form.get("useComplexAuto") or "").strip().lower()
-    use_complex_auto = auto_flag in {"1", "true", "on", "yes"}
+    use_complex = auto_flag in {"1", "true", "on", "yes"}
     start_sample = int(start_sample_str) if start_sample_str.isdigit() else 0
 
     if not cover or not cover.filename:
@@ -384,7 +383,7 @@ def embed_media():
             stego_wav = _embed_audio_wav(
                 cover_bytes, payload_bytes, k=lsb, key=key,
                 start_sample=start_sample,
-                use_complex_auto=use_complex_auto
+                use_complex=use_complex
             )
 
             try:
