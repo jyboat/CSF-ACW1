@@ -31,49 +31,31 @@ def flat_to_image(flat: np.ndarray, shape: tuple, mode: str = "RGB") -> bytes:
 
 # Edge/texture (complex) selection
 
-def _sobel_magnitude(gray_uint8: np.ndarray) -> np.ndarray:
-    g = gray_uint8.astype(np.float32)
-    kx = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], dtype=np.float32)
-    ky = np.array([[-1,-2,-1],[0,0,0],[1,2,1]], dtype=np.float32)
-    gpad = np.pad(g, 1, mode='reflect')
-    Gx = (kx[0,0]*gpad[:-2,:-2] + kx[0,1]*gpad[:-2,1:-1] + kx[0,2]*gpad[:-2,2:] +
-          kx[1,0]*gpad[1:-1,:-2] + kx[1,1]*gpad[1:-1,1:-1] + kx[1,2]*gpad[1:-1,2:] +
-          kx[2,0]*gpad[2:,  :-2] + kx[2,1]*gpad[2:,  1:-1] + kx[2,2]*gpad[2:,  2:])
-    Gy = (ky[0,0]*gpad[:-2,:-2] + ky[0,1]*gpad[:-2,1:-1] + ky[0,2]*gpad[:-2,2:] +
-          ky[1,0]*gpad[1:-1,:-2] + ky[1,1]*gpad[1:-1,1:-1] + ky[1,2]*gpad[1:-1,2:] +
-          ky[2,0]*gpad[2:,  :-2] + ky[2,1]*gpad[2:,  1:-1] + ky[2,2]*gpad[2:,  2:])
-    return np.hypot(Gx, Gy)
+# def _sobel_magnitude(gray_uint8: np.ndarray) -> np.ndarray:
+#     g = gray_uint8.astype(np.float32)
+#     kx = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], dtype=np.float32)
+#     ky = np.array([[-1,-2,-1],[0,0,0],[1,2,1]], dtype=np.float32)
+#     gpad = np.pad(g, 1, mode='reflect')
+#     Gx = (kx[0,0]*gpad[:-2,:-2] + kx[0,1]*gpad[:-2,1:-1] + kx[0,2]*gpad[:-2,2:] +
+#           kx[1,0]*gpad[1:-1,:-2] + kx[1,1]*gpad[1:-1,1:-1] + kx[1,2]*gpad[1:-1,2:] +
+#           kx[2,0]*gpad[2:,  :-2] + kx[2,1]*gpad[2:,  1:-1] + kx[2,2]*gpad[2:,  2:])
+#     Gy = (ky[0,0]*gpad[:-2,:-2] + ky[0,1]*gpad[:-2,1:-1] + ky[0,2]*gpad[:-2,2:] +
+#           ky[1,0]*gpad[1:-1,:-2] + ky[1,1]*gpad[1:-1,1:-1] + ky[1,2]*gpad[1:-1,2:] +
+#           ky[2,0]*gpad[2:,  :-2] + ky[2,1]*gpad[2:,  1:-1] + ky[2,2]*gpad[2:,  2:])
+#     return np.hypot(Gx, Gy)
 
-def select_complex_indices_from_image(image_bytes: bytes, top_percent=30,
-                                      mode="RGB", key=None):
+def select_complex_indices_by_key(image_bytes: bytes, mode="RGB", key: str = "") -> np.ndarray:
     im = Image.open(io.BytesIO(image_bytes)).convert(mode)
     arr = np.array(im, dtype=np.uint8)
-    if arr.ndim == 2:
-        H, W = arr.shape; C = 1
-        gray = arr
-    else:
-        H, W, C = arr.shape
-        if C >= 3:
-            gray = (0.299*arr[...,0] + 0.587*arr[...,1] + 0.114*arr[...,2]).astype(np.uint8)
-        else:
-            gray = arr.squeeze().astype(np.uint8)
-
-    mag = _sobel_magnitude(gray)
-    thresh = np.percentile(mag, 100 - top_percent)
-    mask_pix = (mag >= thresh).ravel()
-    pix_idx = np.flatnonzero(mask_pix)
-    chan_offsets = np.arange(C, dtype=np.int64)
-    eligible = (pix_idx[:, None] * C + chan_offsets[None, :]).reshape(-1)
-
-    if key is not None:
-        seed = int.from_bytes(hashlib.sha256(str(key).encode()).digest()[:8], 'little')
-        rng = random.Random(seed)
-        el = eligible.tolist()
-        rng.shuffle(el)
-        eligible = np.array(el, dtype=np.int64)
-
-    flat = arr.reshape(-1)
-    return flat, arr.shape, im.mode, eligible
+    N = arr.size
+    idx = np.arange(N, dtype=np.int64)
+    # seed from key + dimensions so it’s stable for same (H,W,C)
+    HWC = (*arr.shape,) if arr.ndim == 3 else (*arr.shape, 1)
+    seed_material = f"{key}|{HWC[0]}|{HWC[1]}|{HWC[2]}".encode()
+    seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], 'little') & 0x7FFFFFFF
+    rng = np.random.RandomState(seed)
+    rng.shuffle(idx)
+    return idx
 
 # XOR keystream + LSB embed/extract (indices-aware)
 
@@ -163,39 +145,50 @@ def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.
         raise ValueError("Checksum mismatch")
     return payload
 
+def build_img_key(user_key: str, lsb: int, start_x: int | None, start_y: int | None) -> str:
+    # Normalize and delimit to avoid collisions
+    parts = [                      # version tag for future changes
+        f"{user_key}",
+        f"{int(lsb)}",
+        f"{(int(start_x) if start_x is not None else 'NA')}",
+        f"{(int(start_y) if start_y is not None else 'NA')}",
+    ]
+    return "".join(parts)
+
 # Run immediately
 
-cover_path = "test/img_rgb_100x100_RGB.png"
-payload_path = "test/payload_900B.bin"
-stego_out_path = "stego_rgb_100x100.png"
+# cover_path = "test/img_rgb_100x100_RGB.png"
+# payload_path = "test/payload_900B.bin"
+# stego_out_path = "stego_rgb_100x100.png"
 
-k = 2
-top_percent = 30
-key = "secret"
+# k = 2
+# top_percent = 30
+# key = "secret"
 
-with open(cover_path, "rb") as f:
-    cover_bytes = f.read()
-with open(payload_path, "rb") as f:
-    payload_bytes = f.read()
+# with open(cover_path, "rb") as f:
+#     cover_bytes = f.read()
+# with open(payload_path, "rb") as f:
+#     payload_bytes = f.read()
 
-flat_cover, shape, mode, eligible = select_complex_indices_from_image(
-    cover_bytes, top_percent=top_percent, mode="RGB", key=key
-)
+# # build flat cover + stable indices
+# flat_cover, shape, mode = image_to_flat(cover_bytes, mode="RGB")
+# eligible = select_complex_indices_by_key(cover_bytes, mode="RGB", key=key)
 
-bits_needed = (16 + len(payload_bytes)) * 8
-bits_available = len(eligible) * k
-if bits_needed > bits_available:
-    raise SystemExit("Payload too large")
 
-stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=k, key=key, indices=eligible)
+# bits_needed = (16 + len(payload_bytes)) * 8
+# bits_available = len(eligible) * k
+# if bits_needed > bits_available:
+#     raise SystemExit("Payload too large")
 
-stego_bytes = flat_to_image(stego_flat, shape, mode)
-with open(stego_out_path, "wb") as f:
-    f.write(stego_bytes)
-print(f"Stego saved to {stego_out_path}")
+# stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=k, key=key, indices=eligible)
 
-recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
-print("Payload match?", recovered == payload_bytes)
+# stego_bytes = flat_to_image(stego_flat, shape, mode)
+# with open(stego_out_path, "wb") as f:
+#     f.write(stego_bytes)
+# print(f"Stego saved to {stego_out_path}")
+
+# recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
+# print("Payload match?", recovered == payload_bytes)
 
 # Pixel Intensity Plot
 # cover_path = "test/img_rgb_100x100_RGB.png"

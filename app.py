@@ -24,7 +24,8 @@ from data_comparison import save_images_to_session, save_audio_to_session, compu
 
 # lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
-    select_complex_indices_from_image,
+    build_img_key,
+    select_complex_indices_by_key,
     embed_xor_lsb_at_indices,
     extract_xor_lsb_at_indices,
     flat_to_image,
@@ -350,22 +351,15 @@ def embed_media():
                 return redirect(url_for("index"))
 
             flat_cover, shape, _ = image_to_flat(cover_bytes, mode="RGB")
-            _, _, _, eligible = select_complex_indices_from_image(
-                cover_bytes, top_percent=30, mode="RGB", key=key
-            )
-            bits_needed = (16 + len(payload_bytes)) * 8
-            bits_avail = len(eligible) * lsb
-            if bits_needed > bits_avail:
-                flash(
-                    "Not enough complex locations with current LSB/top% settings. "
-                    f"Need {bits_needed} bits, have {bits_avail} bits.",
-                    "error"
-                )
-                return redirect(url_for("index"))
+            eligible = select_complex_indices_by_key(cover_bytes, mode="RGB", key=key)
 
-            stego_flat = embed_xor_lsb_at_indices(
-                flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
-            )
+            bits_needed = (16 + len(payload_bytes)) * 8
+            bits_avail  = len(eligible) * lsb
+            if bits_needed > bits_avail:
+                flash("Not enough capacity...", "error"); return redirect(url_for("index"))
+
+            stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=lsb, key=key, indices=eligible)
+
             stego_png = flat_to_image(stego_flat, shape, mode="RGB")
 
             # Best-effort session save; don't fail the request if it can't be saved.
@@ -458,11 +452,11 @@ def extract_media():
     # -------- IMAGE PATH --------
     if is_image_extension(stego.filename):
         try:
+            # EXTRACT (image path)
             flat, _, _ = image_to_flat(file_bytes, mode="RGB")
-            _, _, _, eligible = select_complex_indices_from_image(
-                file_bytes, top_percent=30, mode="RGB", key=key
-            )
+            eligible = select_complex_indices_by_key(file_bytes, mode="RGB", key=key)
             payload = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
+
             return send_file(
                 io.BytesIO(payload),
                 mimetype="application/octet-stream",
