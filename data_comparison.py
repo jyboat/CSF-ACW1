@@ -1,10 +1,12 @@
-import base64
 import uuid
 from flask import session
 from PIL import Image
 import numpy as np
 import soundfile as sf
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Agg")
+
 
 def save_images_to_session(cover_bytes, stego_png):
     try:
@@ -26,6 +28,7 @@ def save_images_to_session(cover_bytes, stego_png):
         print(f"Error saving images to session: {e}")
         return False
 
+
 def save_audio_to_session(cover_bytes, stego_wav):
     try:
         uid = uuid.uuid4().hex
@@ -45,7 +48,8 @@ def save_audio_to_session(cover_bytes, stego_wav):
     except Exception as e:
         print(f"Error saving images to session: {e}")
         return False
-    
+
+
 def compute_pixel_diff(cover_path, stego_path):
     """
     Compare two image files pixel-by-pixel.
@@ -95,11 +99,6 @@ def compute_audio_diff(cover_path, stego_path):
     return diff_list
 
 
-    #Plot cover vs stego waveforms
-    time_axis = np.arange(len(cover_audio)) / sr1
-
-
-
 def save_rgb_analysis_to_session(cover_path, stego_path):
     cover_img = np.array(Image.open("static/" + cover_path).convert("RGB"))
     stego_img = np.array(Image.open("static/" + stego_path).convert("RGB"))
@@ -124,15 +123,16 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
                 histtype="stepfilled", linewidth=1.0, label="Cover", color="black",)
 
         ax.set_title(f"{name} channel")
-        ax.set_xlabel("Pixel intensity"); ax.set_ylabel("No. of pixels")
-        ax.set_xlim(0, 255); 
+        ax.set_xlabel("Pixel intensity")
+        ax.set_ylabel("No. of pixels")
+        ax.set_xlim(0, 255)
         ax.legend()
 
     plt.tight_layout()
     uid = uuid.uuid4().hex
-    out_path =f"static/tmp/user/img/rgb_analysis_{uid}.png"
+    out_path = f"static/tmp/user/img/rgb_analysis_{uid}.png"
     plt.savefig(out_path)
     plt.close()
 
-    session['rgb_analysis_filepath'] = out_path.replace("static/","")
+    session['rgb_analysis_filepath'] = out_path.replace("static/", "")
     return True

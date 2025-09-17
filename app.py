@@ -48,10 +48,12 @@ if not app.logger.handlers:
 # =============== WAV / PCM AUDIO HELPERS =============
 # =====================================================
 
+
 def _rng_from_key(key: str) -> np.random.RandomState:
     # Make a stable seed from the key string
     seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
     return np.random.RandomState(int(seed) & 0x7FFFFFFF)
+
 
 def _wav_bytes_to_np(wav_bytes: bytes):
     """
@@ -103,6 +105,7 @@ def _wav_bytes_to_np(wav_bytes: bytes):
     )
     return samples, params
 
+
 def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
     """
     Convert 1-D interleaved samples back into WAV bytes with original params.
@@ -142,6 +145,7 @@ def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
         w.writeframes(frames_bytes)
     return bio_out.getvalue()
 
+
 def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     """
     For now: use ALL sample positions, shuffled by key.
@@ -152,6 +156,7 @@ def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     rng = _rng_from_key(key)
     rng.shuffle(idx)
     return idx
+
 
 def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
                      start_sample: int = 0, use_complex: bool = False) -> bytes:
@@ -176,6 +181,7 @@ def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
     # Pack back to WAV
     return _np_to_wav_bytes(stego, params)
 
+
 def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
     samples, _ = _wav_bytes_to_np(wav_bytes)
     payload, _hdr = extract_xor_lsb_audio(samples, k=k, key=key)
@@ -185,6 +191,7 @@ def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
 # ==================== ROUTES =========================
 # =====================================================
 
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     # If the main form posts to "/", delegate to the embed logic.
@@ -192,10 +199,12 @@ def index():
         return embed_media()
     return render_template("index.html")
 
+
 @app.route("/results")
 def results():
     cover_filepath = session.get("cover")
     stego_filepath = session.get("stego")
+    rgb_analysis = None
 
     if not cover_filepath or not stego_filepath:
         flash("No current files found. Please embed your file first.", "error")
@@ -205,7 +214,7 @@ def results():
         media_type = "img"
         difference = compute_pixel_diff(cover_filepath, stego_filepath)
 
-        #Generate and save RGB pixel graph
+        # Generate and save RGB pixel graph
         save_rgb_analysis_to_session(cover_filepath, stego_filepath)
         rgb_analysis = session.get("rgb_analysis_filepath")
 
@@ -224,6 +233,7 @@ def results():
         difference=difference,
         rgb_analysis_filepath=rgb_analysis
     )
+
 
 @app.route("/check", methods=["POST"])
 def check_capacity_form():
@@ -262,6 +272,7 @@ def check_capacity_form():
 
     return redirect(url_for("index"))
 
+
 @app.route("/api/check-capacity", methods=["POST"])
 def api_check_capacity():
     cover = request.files.get("coverFile")
@@ -292,6 +303,7 @@ def api_check_capacity():
         return jsonify({"ok": False, "error": str(e)}), 400
 
     return jsonify({"ok": True, "capacity_bytes": cap})
+
 
 @app.route("/embed", methods=["POST"])
 def embed_media():
@@ -368,12 +380,15 @@ def embed_media():
             except Exception:
                 pass
 
-            return send_file(
-                io.BytesIO(stego_png),
-                mimetype="image/png",
-                as_attachment=True,
-                download_name="stego.png",
-            )
+            # return send_file(
+            #     io.BytesIO(stego_png),
+            #     mimetype="image/png",
+            #     as_attachment=True,
+            #     download_name="stego.png",
+            # )
+
+            return redirect(url_for("results"))
+
         except Exception as e:
             flash(f"Embed (image) failed: {e}", "error")
             return redirect(url_for("index"))
@@ -402,12 +417,15 @@ def embed_media():
             except Exception:
                 pass
 
-            return send_file(
-                io.BytesIO(stego_wav),
-                mimetype="audio/wav",
-                as_attachment=True,
-                download_name="stego.wav",
-            )
+            # return send_file(
+            #     io.BytesIO(stego_wav),
+            #     mimetype="audio/wav",
+            #     as_attachment=True,
+            #     download_name="stego.wav",
+            # )
+
+            return redirect(url_for("results"))
+
         except Exception as e:
             flash(f"Embed (audio) failed: {e}", "error")
             return redirect(url_for("index"))
@@ -421,6 +439,7 @@ def embed_media():
         request.form.get("stegoKey"),
     )
     return redirect(url_for("index"))
+
 
 @app.route("/extract", methods=["POST"])
 def extract_media():
@@ -483,6 +502,7 @@ def extract_media():
 
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))
+
 
 if __name__ == "__main__":
     app.debug = True

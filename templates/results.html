@@ -21,14 +21,14 @@
             <div class="row">
               <!-- Cover Object -->
               <div class="col-md-6">
-                <div class="section-box" id="section-box">
+                <div class="section-box">
                   <h5>Original Cover Object</h5>
                 <img src="{{ url_for('static', filename=cover_filepath) }}" class="cover-image" id="coverImage">
                 </div>
               </div>
               <!-- Stego object-->
               <div class="col-md-6">
-                <div class="section-box" id="section-box">
+                <div class="section-box">
                   <h5>Stego Object</h5>
                   <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
               
@@ -37,13 +37,15 @@
             </div>
 
             <div class="row">
-              <div class="col-md-12">
-                <div class="section-box text-center" id="section-box">
-                  <h6><strong>RGB Channel Analysis</strong></h6>
-                <img src="{{ url_for('static', filename=rgb_analysis_filepath) }}" class="img-preview" id="rgbAnalysisImage">
-                </div>
-                
-              </div>
+                {% if rgb_analysis_filepath %}
+                    <div class="col-md-12">
+                        <div class="section-box text-center">
+                            <h6><strong>RGB Channel Analysis</strong></h6>
+                            <img src="{{ url_for('static', filename=rgb_analysis_filepath) }}"
+                                 class="img-preview" id="rgbAnalysisImage">
+                        </div>
+                    </div>
+                {% endif %}
       
             </div>
 
@@ -54,7 +56,7 @@
           <div class="row">
             <div class="col-md-6">
               <!--Cover audio-->
-              <div class="section-box" id="section-box">
+              <div class="section-box">
                 <h5>Original Audio</h5>
                 <div id="waveform-cover"></div>
                 <button id="playCover" class="btn btn-primary btn-sm mt-2">Play / Pause</button>
@@ -62,7 +64,7 @@
             </div>
             <!--Stego audio-->
             <div class="col-md-6">
-              <div class="section-box" id="section-box">
+              <div class="section-box">
                 <h5>Stego Audio</h5>
                 <div id="waveform-stego"></div>
                 <button id="playStego" class="btn btn-primary btn-sm mt-2">Play / Pause</button>
@@ -70,7 +72,7 @@
             </div>
           </div>
 
-          <div class="section-box text-center" id="section-box">
+          <div class="section-box text-center">
                   <h6>LSB Waveform Difference</h6>
                   <img src="static/dummy/waveform1.png" class="img-preview" id="waveformImage">
                   <img src="static/dummy/waveform2.png" class="img-preview" id="waveformImage">
@@ -81,7 +83,7 @@
 
     <!-- Bottom Buttons -->
     <div class="mt-4 text-center">
-    <a href="index.html" class="btn btn-secondary">Back to Home</a>
+    <a href="/" class="btn btn-secondary">Back to Home</a>
     <a href="static/dummy/diff_map.png" class="btn btn-success" download>Download Visualisation</a>
     </div>
     

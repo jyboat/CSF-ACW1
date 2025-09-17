@@ -33,7 +33,7 @@
     margin-bottom: 5px;
 }
     
-.results #section-box {
+.results .section-box {
     border: 1px solid #dee2e6;
     padding: 15px;
     border-radius: 5px;

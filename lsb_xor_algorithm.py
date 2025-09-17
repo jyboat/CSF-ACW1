@@ -145,7 +145,7 @@ def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.
         raise ValueError("Checksum mismatch")
     return payload
 
-def build_img_key(user_key: str, lsb: int, start_x: int | None, start_y: int | None) -> str:
+def build_img_key(user_key: str, lsb: int, start_x, start_y) -> str:
     # Normalize and delimit to avoid collisions
     parts = [                      # version tag for future changes
         f"{user_key}",
