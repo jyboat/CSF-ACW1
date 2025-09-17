@@ -20,7 +20,7 @@ from capacity import (
 )
 
 # data_comparison helpers
-from data_comparison import save_images_to_session, save_audio_to_session, compute_pixel_diff, compute_audio_diff
+from data_comparison import save_images_to_session, save_audio_to_session, compute_pixel_diff, compute_audio_diff, save_rgb_analysis_to_session
 
 # lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
@@ -203,6 +203,11 @@ def results():
     if cover_filepath.lower().endswith(".png") and stego_filepath.lower().endswith(".png"):
         media_type = "img"
         difference = compute_pixel_diff(cover_filepath, stego_filepath)
+
+        #Generate and save RGB pixel graph
+        save_rgb_analysis_to_session(cover_filepath, stego_filepath)
+        rgb_analysis = session.get("rgb_analysis_filepath")
+
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
         media_type = "audio"
         difference = compute_audio_diff(cover_filepath, stego_filepath)
@@ -216,6 +221,7 @@ def results():
         stego_filepath=stego_filepath,
         media_type=media_type,
         difference=difference,
+        rgb_analysis_filepath=rgb_analysis
     )
 
 @app.route("/check", methods=["POST"])

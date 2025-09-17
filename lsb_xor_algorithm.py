@@ -263,7 +263,7 @@ for i, name in enumerate(["Red", "Green", "Blue"]):
     ax.legend()
 
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 def make_audio_header(payload: bytes, start_sample: int, use_complex: bool) -> bytes:
     sha8 = hashlib.sha256(payload).digest()[:8]

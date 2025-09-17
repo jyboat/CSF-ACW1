@@ -4,6 +4,7 @@ from flask import session
 from PIL import Image
 import numpy as np
 import soundfile as sf
+import matplotlib.pyplot as plt
 
 def save_images_to_session(cover_bytes, stego_png):
     try:
@@ -45,7 +46,6 @@ def save_audio_to_session(cover_bytes, stego_wav):
         print(f"Error saving images to session: {e}")
         return False
     
-
 def compute_pixel_diff(cover_path, stego_path):
     """
     Compare two image files pixel-by-pixel.
@@ -93,3 +93,46 @@ def compute_audio_diff(cover_path, stego_path):
     diff_list = changed_indices.tolist()
 
     return diff_list
+
+
+    #Plot cover vs stego waveforms
+    time_axis = np.arange(len(cover_audio)) / sr1
+
+
+
+def save_rgb_analysis_to_session(cover_path, stego_path):
+    cover_img = np.array(Image.open("static/" + cover_path).convert("RGB"))
+    stego_img = np.array(Image.open("static/" + stego_path).convert("RGB"))
+
+    channel_names = ["Red", "Green", "Blue"]
+    colors = ["red", "green", "blue"]
+
+    plt.figure(figsize=(12, 5))
+    
+    # indexes the channel (0=Red, 1=Green, 2=Blue)
+    for i, name in enumerate(channel_names):
+        ax = plt.subplot(1, 3, i+1)
+        c = cover_img[..., i].ravel()
+        s = stego_img[..., i].ravel()
+
+        # Stego: 
+        ax.hist(s, bins=np.arange(257), range=(0, 256),
+                histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
+
+        # Cover: 
+        ax.hist(c, bins=np.arange(257), range=(0, 256),
+                histtype="stepfilled", linewidth=1.0, label="Cover", color="black",)
+
+        ax.set_title(f"{name} channel")
+        ax.set_xlabel("Pixel intensity"); ax.set_ylabel("No. of pixels")
+        ax.set_xlim(0, 255); 
+        ax.legend()
+
+    plt.tight_layout()
+    uid = uuid.uuid4().hex
+    out_path =f"static/tmp/user/img/rgb_analysis_{uid}.png"
+    plt.savefig(out_path)
+    plt.close()
+
+    session['rgb_analysis_filepath'] = out_path.replace("static/","")
+    return True
