@@ -28,7 +28,9 @@ from lsb_xor_algorithm import (
     embed_xor_lsb_at_indices,
     extract_xor_lsb_at_indices,
     flat_to_image,
-    image_to_flat
+    image_to_flat,
+    embed_xor_lsb_audio, extract_xor_lsb_audio,
+    build_indices_for_audio_with_start
 )
 
 # ------------------------------------------------------
@@ -146,12 +148,13 @@ def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     rng.shuffle(idx)
     return idx
 
-def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str) -> bytes:
+def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
+                     start_sample: int = 0, use_complex_auto: bool = False) -> bytes:
     samples, params = _wav_bytes_to_np(wav_bytes)
     # Choose indices (all samples shuffled for now)
     indices = _select_audio_indices(samples, key)
 
-    bits_needed = (16 + len(payload)) * 8  # header + payload (your engine uses 16-byte header)
+    bits_needed = (32 + len(payload)) * 8  # header + payload (your engine uses 16-byte header)
     bits_avail = indices.size * k
     if bits_needed > bits_avail:
         raise ValueError(
@@ -162,18 +165,18 @@ def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str) -> byte
     work = samples.copy()
 
     # Reuse your robust header + keyed XOR + LSB function
-    stego = embed_xor_lsb_at_indices(work, payload, k=k, key=key, indices=indices)
+    stego = embed_xor_lsb_audio(work, payload, k=k, key=key, start_sample=start_sample,
+                                   use_complex_auto=use_complex_auto)
     
     # Pack back to WAV
     return _np_to_wav_bytes(stego, params)
 
 def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
-    samples, params = _wav_bytes_to_np(wav_bytes)
-    indices = _select_audio_indices(samples, key)
-    payload = extract_xor_lsb_at_indices(samples, k=k, key=key, indices=indices)
+    samples, _ = _wav_bytes_to_np(wav_bytes)
+    payload, _hdr = extract_xor_lsb_audio(samples, k=k, key=key)
     return payload
 
-# =====================================================
+# ====================================================
 # ==================== ROUTES =========================
 # =====================================================
 
@@ -289,6 +292,10 @@ def embed_media():
     key = request.form.get("stegoKey", "").strip()
     text_payload_str = request.form.get("textPayload", "")
     payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
+    start_sample_str = request.form.get("startSample", "").strip()
+    auto_flag = (request.form.get("autoStart") or request.form.get("useComplexAuto") or "").strip().lower()
+    use_complex_auto = auto_flag in {"1", "true", "on", "yes"}
+    start_sample = int(start_sample_str) if start_sample_str.isdigit() else 0
 
     if not cover or not cover.filename:
         flash("Upload a cover file first.", "error")
@@ -374,7 +381,11 @@ def embed_media():
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
                 return redirect(url_for("index"))
 
-            stego_wav = _embed_audio_wav(cover_bytes, payload_bytes, k=lsb, key=key)
+            stego_wav = _embed_audio_wav(
+                cover_bytes, payload_bytes, k=lsb, key=key,
+                start_sample=start_sample,
+                use_complex_auto=use_complex_auto
+            )
 
             try:
                 save_audio_to_session(cover_bytes, stego_wav)

@@ -1,8 +1,18 @@
-import io, struct, hashlib, random
+import io, struct as _struct, hashlib, random
 from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+
+# Dataclass for audios
+@dataclass
+class AudioHeader:
+    magic: bytes = b"STG2"
+    length: int = 0
+    sha8: bytes = b""
+    start_sample: int = 0
+    flags: int = 0
+    _pad: int = 0
 
 # Image helpers
 
@@ -72,7 +82,7 @@ def keystream_bits(key: str, n_bits: int) -> np.ndarray:
         return np.empty(0, dtype=np.uint8)
     counter, out = 0, []
     while len(out) < n_bits:
-        block = hashlib.sha256(key.encode() + struct.pack(">Q", counter)).digest()
+        block = hashlib.sha256(key.encode() + _struct.pack(">Q", counter)).digest()
         for byte in block:
             for i in range(8):
                 out.append((byte >> (7 - i)) & 1)
@@ -88,12 +98,12 @@ class Header:
 
 def make_header(payload: bytes) -> bytes:
     h = Header(length=len(payload), sha8=hashlib.sha256(payload).digest()[:8])
-    return h.magic + struct.pack("<I", h.length) + h.sha8
+    return h.magic + _struct.pack("<I", h.length) + h.sha8
 
 def parse_header(hdr: bytes) -> Header:
     if len(hdr) < 16 or hdr[:4] != b"STG1":
         raise ValueError("Invalid header")
-    length = struct.unpack("<I", hdr[4:8])[0]
+    length = _struct.unpack("<I", hdr[4:8])[0]
     sha8 = hdr[8:16]
     return Header(magic=b"STG1", length=length, sha8=sha8)
 
@@ -146,7 +156,7 @@ def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.
     K_all = keystream_bits(key, len(C_all))
     M_all = C_all ^ K_all
     all_bytes = np.packbits(M_all).tobytes()
-    length = struct.unpack("<I", all_bytes[4:8])[0]
+    length = _struct.unpack("<I", all_bytes[4:8])[0]
     sha8 = all_bytes[8:16]
     payload = all_bytes[16:16 + length]
     if hashlib.sha256(payload).digest()[:8] != sha8:
@@ -254,3 +264,146 @@ for i, name in enumerate(["Red", "Green", "Blue"]):
 
 plt.tight_layout()
 plt.show()
+
+def make_audio_header(payload: bytes, start_sample: int, use_complex_auto: bool) -> bytes:
+    sha8 = hashlib.sha256(payload).digest()[:8]
+    flags = 1 if use_complex_auto else 0
+    return (AudioHeader.magic +
+            _struct.pack("<I", len(payload)) + sha8 +
+            _struct.pack("<Q", int(start_sample)) +
+            _struct.pack("<I", flags) + _struct.pack("<I", 0))
+
+def parse_audio_header(hdr: bytes) -> AudioHeader:
+    if len(hdr) < 32 or hdr[:4] != b"STG2":
+        raise ValueError("Invalid STG2 audio header")
+    length = _struct.unpack("<I", hdr[4:8])[0]
+    sha8 = hdr[8:16]
+    start_sample = _struct.unpack("<Q", hdr[16:24])[0]
+    flags = _struct.unpack("<I", hdr[24:28])[0]
+    return AudioHeader(b"STG2", length, sha8, start_sample, flags, 0)
+
+def select_complex_audio_indices(samples: np.ndarray, top_percent: int = 30, window: int = 1024) -> np.ndarray:
+    # complexity = moving-avg(|x[n] − x[n−1]|)
+    x = samples.astype(np.int64)
+    d = np.abs(np.diff(x, prepend=x[:1]))
+    if window > 1:
+        kernel = np.ones(window, dtype=np.float64) / window
+        score = np.convolve(d.astype(np.float64), kernel, mode="same")
+    else:
+        score = d.astype(np.float64)
+    n = score.shape[0]
+    k = max(1, int(n * (top_percent / 100.0)))
+    idx_sorted = np.argsort(score)
+    top_idx = idx_sorted[-k:]
+    return np.sort(top_idx).astype(np.int64)
+
+def build_indices_for_audio_with_start(
+    samples: np.ndarray,
+    key: str,
+    k_bits: int,
+    payload_nbytes: int,
+    start_sample: int,
+    use_complex_auto: bool = False,
+    complex_top_percent: int = 30,
+) -> tuple[np.ndarray, int]:
+    n = samples.size
+    seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
+    rng = np.random.RandomState(int(seed) & 0x7FFFFFFF)
+    perm = np.arange(n, dtype=np.int64); rng.shuffle(perm)
+
+    header_bits = 32 * 8  # STG2 header
+    hdr_groups = (header_bits + k_bits - 1) // k_bits
+    if hdr_groups > n: raise ValueError("Cover too small for audio header")
+    hdr_idx = perm[:hdr_groups]
+
+    if use_complex_auto:
+        complex_idx = select_complex_audio_indices(samples, top_percent=complex_top_percent)
+        hdr_set = set(int(i) for i in hdr_idx)
+        complex_idx = np.array([i for i in complex_idx if int(i) not in hdr_set], dtype=np.int64)
+        rng2 = np.random.RandomState((int(seed) ^ 0xA5A5A5) & 0x7FFFFFFF)
+        rng2.shuffle(complex_idx)
+        payload_idx = complex_idx
+    else:
+        pos = int(np.where(perm == int(start_sample))[0][0]) if int(start_sample) < n else 0
+        rotated = np.concatenate([perm[pos:], perm[:pos]])
+        hdr_set = set(int(i) for i in hdr_idx)
+        payload_idx = np.array([i for i in rotated if int(i) not in hdr_set], dtype=np.int64)
+
+    total_bits = (32 + payload_nbytes) * 8
+    total_groups = (total_bits + k_bits - 1) // k_bits
+    if total_groups > (hdr_idx.size + payload_idx.size):
+        raise ValueError("Not enough capacity in selected indices")
+
+    payload_groups = total_groups - hdr_idx.size
+    indices_all = np.concatenate([hdr_idx, payload_idx[:payload_groups]]).astype(np.int64)
+    return indices_all, hdr_groups
+
+def embed_xor_lsb_audio(samples: np.ndarray, payload: bytes, k: int, key: str,
+                           start_sample: int, use_complex_auto: bool = False) -> np.ndarray:
+    from lsb_xor_algorithm import keystream_bits  # reuse existing keystream
+    indices_all, hdr_groups = build_indices_for_audio_with_start(
+        samples, key, k, len(payload), start_sample, use_complex_auto
+    )
+    hdr_bytes = make_audio_header(payload, start_sample, use_complex_auto)
+    hdr_bits = np.unpackbits(np.frombuffer(hdr_bytes, dtype=np.uint8))
+    pay_bits = np.unpackbits(np.frombuffer(payload, dtype=np.uint8))
+    C_hdr = hdr_bits ^ keystream_bits(key, hdr_bits.size)
+    C_pay = pay_bits ^ keystream_bits(key, pay_bits.size)
+
+    stego = samples.copy()
+    # write header
+    for i in range((hdr_bits.size + k - 1) // k):
+        idx = int(indices_all[i]); chunk = 0
+        for t in range(k):
+            b = i * k + t
+            chunk = (chunk << 1) | (int(C_hdr[b]) if b < hdr_bits.size else 0)
+        stego[idx] = (int(stego[idx]) & ~((1 << k) - 1)) | chunk
+    # write payload
+    off = (hdr_bits.size + k - 1) // k
+    for i in range((pay_bits.size + k - 1) // k):
+        idx = int(indices_all[off + i]); chunk = 0
+        for t in range(k):
+            b = i * k + t
+            chunk = (chunk << 1) | (int(C_pay[b]) if b < pay_bits.size else 0)
+        stego[idx] = (int(stego[idx]) & ~((1 << k) - 1)) | chunk
+    return stego
+
+def extract_xor_lsb_audio(stego: np.ndarray, k: int, key: str):
+    from lsb_xor_algorithm import keystream_bits
+    n = stego.size
+    seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
+    rng = np.random.RandomState(int(seed) & 0x7FFFFFFF)
+    perm = np.arange(n, dtype=np.int64); rng.shuffle(perm)
+
+    hdr_bits_len = 32 * 8
+    hdr_groups = (hdr_bits_len + k - 1) // k
+    if hdr_groups > n: raise ValueError("Cover too small for STG2 header")
+    hdr_idx = perm[:hdr_groups]
+
+    # read header
+    bits = []
+    for i in range(hdr_groups):
+        v = int(stego[int(hdr_idx[i])]) & ((1 << k) - 1)
+        for t in range(k - 1, -1, -1): bits.append((v >> t) & 1)
+    C_hdr = np.array(bits[:hdr_bits_len], dtype=np.uint8)
+    M_hdr = C_hdr ^ keystream_bits(key, len(C_hdr))
+    hdr = parse_audio_header(np.packbits(M_hdr).tobytes())
+
+    # rebuild indices incl. payload
+    indices_all, hdr_groups_check = build_indices_for_audio_with_start(
+        stego, key, k, hdr.length, start_sample=int(hdr.start_sample),
+        use_complex_auto=bool(hdr.flags & 1)
+    )
+    assert hdr_groups_check == hdr_groups
+
+    # read payload
+    pay_groups = (hdr.length * 8 + k - 1) // k
+    off = hdr_groups; bits = []
+    for i in range(pay_groups):
+        v = int(stego[int(indices_all[off + i])]) & ((1 << k) - 1)
+        for t in range(k - 1, -1, -1): bits.append((v >> t) & 1)
+    C_pay = np.array(bits[: hdr.length * 8], dtype=np.uint8)
+    payload = np.packbits(C_pay ^ keystream_bits(key, len(C_pay))).tobytes()
+    if hashlib.sha256(payload).digest()[:8] != hdr.sha8:
+        raise ValueError("Checksum mismatch")
+    return payload, hdr
