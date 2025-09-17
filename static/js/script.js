@@ -114,6 +114,7 @@ $(document).ready(function () {
 
     $("#skipBtn").on("click", function() {
         $("#useComplex").val("1");
+        $("#startSample").val("");
     })
 
     $textPayload.on("input", checkCapacity);
@@ -129,7 +130,7 @@ $(document).ready(function () {
         const file = $fileInput[0].files[0];
         const fileType = file.type;
 
-        $("#useComplex").val(""); // clear use complex flag
+        $("#useComplex").val("0"); // clear use complex flag
 
         if (fileType.startsWith("image/")) {
             // ===== IMAGE CLICK =====

@@ -10,7 +10,7 @@ fonttools==4.59.2
 importlib_metadata==8.7.0
 importlib_resources==6.5.2
 itsdangerous==2.2.0
-Jinja2==3.1.6
+Jinja2==3.0.3
 kiwisolver==1.4.7
 MarkupSafe==3.0.2
 matplotlib==3.9.4

@@ -4,7 +4,7 @@ from flask import (
     flash, send_file, jsonify, session
 )
 from typing import Any
-import io
+import io, logging
 import os
 import wave
 import numpy as np
@@ -37,6 +37,11 @@ from lsb_xor_algorithm import (
 app = Flask(__name__)
 toastr = Toastr(app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")
+
+# Make sure INFO shows up in your terminal
+app.logger.setLevel(logging.INFO)
+if not app.logger.handlers:
+    app.logger.addHandler(logging.StreamHandler())
 
 # =====================================================
 # =============== WAV / PCM AUDIO HELPERS =============
@@ -293,8 +298,14 @@ def embed_media():
     payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
     start_sample_str = request.form.get("startSample", "").strip()
     auto_flag = (request.form.get("autoStart") or request.form.get("useComplex") or "").strip().lower()
-    use_complex = auto_flag in {"1", "true", "on", "yes"}
+    use_complex = auto_flag in {"1", "true"}
     start_sample = int(start_sample_str) if start_sample_str.isdigit() else 0
+
+    app.logger.info("EMBED fields → useComplex=%r startSample=%r lsb=%r key=%r",
+                    request.form.get("useComplex"),
+                    request.form.get("startSample"),
+                    request.form.get("lsbCount"),
+                    request.form.get("stegoKey"))
 
     if not cover or not cover.filename:
         flash("Upload a cover file first.", "error")
@@ -402,6 +413,13 @@ def embed_media():
             return redirect(url_for("index"))
 
     flash("Unsupported cover type. Use PNG/BMP/GIF for images or WAV for audio.", "error")
+    app.logger.info(
+        "EMBED fields → useComplex=%r startSample=%r lsb=%r key=%r",
+        request.form.get("useComplex"),
+        request.form.get("startSample"),
+        request.form.get("lsbCount"),
+        request.form.get("stegoKey"),
+    )
     return redirect(url_for("index"))
 
 @app.route("/extract", methods=["POST"])
