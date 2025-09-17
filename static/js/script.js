@@ -115,6 +115,8 @@ $(document).ready(function () {
     $("#skipBtn").on("click", function() {
         $("#useComplex").val("1");
         $("#startSample").val("");
+        $("startX").val("");
+        $("startY").val("");
     })
 
     $textPayload.on("input", checkCapacity);
