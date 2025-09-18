@@ -4,10 +4,12 @@ from flask import (
     flash, send_file, jsonify, session
 )
 from typing import Any
-import io, logging
+import io, logging, re
 import os
 import wave
 import numpy as np
+from zipfile import ZipFile, ZIP_DEFLATED
+import uuid
 
 # capacity.py
 from capacity import (
@@ -27,7 +29,9 @@ from lsb_xor_algorithm import (
     build_img_key,
     select_complex_indices_by_key,
     embed_xor_lsb_at_indices,
+    embed_xor_lsb_from_xy,
     extract_xor_lsb_at_indices,
+    extract_xor_lsb_from_xy,
     flat_to_image,
     image_to_flat,
     embed_xor_lsb_audio, extract_xor_lsb_audio
@@ -312,7 +316,19 @@ def embed_media():
     """
     cover = request.files.get("coverFile")
     lsb_str = request.form.get("lsbCount", "1")
-    key = request.form.get("stegoKey", "").strip()
+    user_key = request.form.get("stegoKey", "").strip()
+
+    start_x_str = request.form.get("startX", "").strip()
+    start_y_str = request.form.get("startY", "").strip()
+
+    if start_x_str and start_y_str:
+        key = build_img_key(user_key, lsb_str, start_x_str, start_y_str)
+    else:
+        # To Do: Change 0 to random value if no pixel is clicked
+        key = build_img_key(user_key, lsb_str, 0, 0)
+
+    print(f"KEY {key}")
+    
     text_payload_str = request.form.get("textPayload", "")
     payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
     start_sample_str = request.form.get("startSample", "").strip()
@@ -363,14 +379,17 @@ def embed_media():
                 return redirect(url_for("index"))
 
             flat_cover, shape, _ = image_to_flat(cover_bytes, mode="RGB")
-            eligible = select_complex_indices_by_key(cover_bytes, mode="RGB", key=key)
 
-            bits_needed = (16 + len(payload_bytes)) * 8
-            bits_avail  = len(eligible) * lsb
-            if bits_needed > bits_avail:
-                flash("Not enough capacity...", "error"); return redirect(url_for("index"))
-
-            stego_flat = embed_xor_lsb_at_indices(flat_cover, payload_bytes, k=lsb, key=key, indices=eligible)
+            if start_x_str and start_y_str:
+                stego_flat = embed_xor_lsb_from_xy(
+                    flat_cover, shape, payload_bytes, k=lsb, key=key,
+                    start_x=int(start_x_str), start_y=int(start_y_str)
+                )
+            else:
+                eligible = select_complex_indices_by_key(cover_bytes, mode="RGB", key=key)
+                stego_flat = embed_xor_lsb_at_indices(
+                    flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
+                )
 
             stego_png = flat_to_image(stego_flat, shape, mode="RGB")
 
@@ -386,6 +405,26 @@ def embed_media():
             #     as_attachment=True,
             #     download_name="stego.png",
             # )
+
+            # Build ZIP in memory
+            zip_buf = io.BytesIO()
+            with ZipFile(zip_buf, "w", ZIP_DEFLATED) as zf:
+                zf.writestr("stego.png", stego_png)
+                # To Do: Encrypt the key before zipping
+                zf.writestr("stego_key.txt", key)
+
+            # Ensure target folder exists
+            GENERATED_DIR = os.path.join(os.getcwd(), "zip")
+            os.makedirs(GENERATED_DIR, exist_ok=True)   # <-- important
+
+            # Save ZIP to disk
+            bundle_name = f"stego_bundle_{uuid.uuid4().hex}.zip"
+            bundle_path = os.path.join(GENERATED_DIR, bundle_name)
+            with open(bundle_path, "wb") as f:
+                f.write(zip_buf.getvalue())
+
+            # Save it for download in results page
+            session["stego_bundle"] = bundle_path
 
             return redirect(url_for("results"))
 
@@ -448,7 +487,13 @@ def extract_media():
     """
     stego = request.files.get("stegoFile")
     lsb_str = request.form.get("lsbCount", "1")
+    # To Do: Read from file instead
     key = request.form.get("stegoKey", "").strip()
+
+    mx = re.search(r'x\s*[:=]\s*(-?\d+|NA)', key)
+    my = re.search(r'y\s*[:=]\s*(-?\d+|NA)', key)
+    sx = None if not mx else (None if mx.group(1).upper() == "NA" else int(mx.group(1)))
+    sy = None if not my else (None if my.group(1).upper() == "NA" else int(my.group(1)))
 
     if not stego or not stego.filename:
         flash("Upload a stego file.", "error")
@@ -472,9 +517,16 @@ def extract_media():
     if is_image_extension(stego.filename):
         try:
             # EXTRACT (image path)
-            flat, _, _ = image_to_flat(file_bytes, mode="RGB")
-            eligible = select_complex_indices_by_key(file_bytes, mode="RGB", key=key)
-            payload = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
+            flat, shape, _ = image_to_flat(file_bytes, mode="RGB")
+
+            if sx and sy:
+                payload = extract_xor_lsb_from_xy(
+                    flat, shape, k=lsb, key=key,
+                    start_x=int(sx), start_y=int(sy)
+                )
+            else:
+                eligible = select_complex_indices_by_key(file_bytes, mode="RGB", key=key)
+                payload = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
 
             return send_file(
                 io.BytesIO(payload),
@@ -502,6 +554,19 @@ def extract_media():
 
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))
+
+@app.route("/download/bundle")
+def download_bundle():
+    bundle_path = session.get("stego_bundle")
+    if not bundle_path or not os.path.exists(bundle_path):
+        flash("No bundle available. Please embed again.", "error")
+        return redirect(url_for("index"))
+    return send_file(
+        bundle_path,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=os.path.basename(bundle_path),
+    )
 
 
 if __name__ == "__main__":

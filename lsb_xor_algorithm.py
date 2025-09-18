@@ -145,13 +145,60 @@ def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.
         raise ValueError("Checksum mismatch")
     return payload
 
+def _linear_indices_from_xy(shape: tuple, start_x: int, start_y: int) -> np.ndarray:
+    # Gray Scale (H, W)
+    if len(shape) == 2:
+        H, W = shape
+        C = 1
+    # Colored image (H, W, C)
+    elif len(shape) == 3:
+        H, W, C = shape
+    else:
+        raise ValueError(f"Unsupported image shape: {shape}")
+
+    # Check if its within boundary
+    if not (0 <= int(start_x) < W and 0 <= int(start_y) < H):
+        raise ValueError(f"start_x/start_y out of bounds for image {W}x{H}")
+
+    start_idx = (int(start_y) * W + int(start_x)) * C  # start at channel 0 of (x,y)
+    N = H * W * C
+
+    idx = np.arange(N, dtype=np.int64)
+    # rotate so we start at (x,y,*)
+    if start_idx > 0:
+        idx = np.concatenate([idx[start_idx:], idx[:start_idx]])
+    return idx
+
+
+def embed_xor_lsb_from_xy(cover_flat: np.ndarray, shape: tuple,
+                          payload: bytes, k: int, key: str,
+                          start_x: int, start_y: int) -> np.ndarray:
+    """
+    Embed starting at (x,y) and then continue sequentially (wrap-around).
+    Reuses your indices-based embed so all keystream/header logic stays the same.
+    """
+    indices = _linear_indices_from_xy(shape, start_x, start_y)
+    # This will raise ValueError if capacity is insufficient
+    return embed_xor_lsb_at_indices(cover_flat, payload, k=k, key=key, indices=indices)
+
+
+def extract_xor_lsb_from_xy(stego_flat: np.ndarray, shape: tuple,
+                            k: int, key: str,
+                            start_x: int, start_y: int) -> bytes:
+    """
+    Extract assuming the payload was embedded starting at (x,y) with the function above.
+    """
+    indices = _linear_indices_from_xy(shape, start_x, start_y)
+    return extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=indices)
+
+
 def build_img_key(user_key: str, lsb: int, start_x, start_y) -> str:
     # Normalize and delimit to avoid collisions
     parts = [                      # version tag for future changes
         f"{user_key}",
         f"{int(lsb)}",
-        f"{(int(start_x) if start_x is not None else 'NA')}",
-        f"{(int(start_y) if start_y is not None else 'NA')}",
+        f"x:{(int(start_x) if start_x is not None else 'NA')}",
+        f"y:{(int(start_y) if start_y is not None else 'NA')}",
     ]
     return "".join(parts)
 
