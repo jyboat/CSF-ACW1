@@ -136,16 +136,33 @@ $(document).ready(function () {
 
         if (fileType.startsWith("image/")) {
             // ===== IMAGE CLICK =====
-            const offset = $(this).offset();
-            const x = e.pageX - offset.left;
-            const y = e.pageY - offset.top;
+            const img = $coverImage[0];
+
+            // Ensure image is loaded
+            if (!img.complete || img.naturalWidth === 0) {
+                console.log("Image not loaded yet!");
+                return;
+            }
+
+            const rect = img.getBoundingClientRect();
+
+            let clickX = e.clientX - rect.left;
+            let clickY = e.clientY - rect.top;
+
+            // Scale to natural image size
+            const scaleX = img.naturalWidth / rect.width;
+            const scaleY = img.naturalHeight / rect.height;
+
+            const imgX = Math.round(clickX * scaleX);
+            const imgY = Math.round(clickY * scaleY);
+
 
             // Save clicked coordinates
-            $("#startX").val(Math.round(x));
-            $("#startY").val(Math.round(y));
+            $("#startX").val(imgX);
+            $("#startY").val(imgY);
             $("#startSample").val(""); // clear audio field
 
-            console.log("Image start location:", Math.round(x), Math.round(y));
+            console.log("Image start location:", imgX, imgY);
 
         } else if (fileType.startsWith("audio/") || file.name.endsWith(".wav") || file.name.endsWith(".pcm")) {
             // ===== AUDIO CLICK =====
