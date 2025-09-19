@@ -126,11 +126,11 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
 
         # Stego: 
         ax.hist(s, bins=np.arange(257), range=(0, 256),
-                histtype="stepfilled", alpha=1.0, label="Stego", color="blue")
+                histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
 
         # Cover: 
         ax.hist(c, bins=np.arange(257), range=(0, 256),
-                histtype="stepfilled", linewidth=1.0, label="Cover", color="black",)
+                histtype="stepfilled", linewidth=1.0, label="Cover", color="purple",)
 
         ax.set_title(f"{name} channel")
         ax.set_xlabel("Pixel intensity")
