@@ -35,7 +35,7 @@
                 </div>
               </div>         
             </div>
-
+     
             <div class="row">
                 {% if rgb_analysis_filepath %}
                     <div class="col-md-12">
@@ -51,15 +51,16 @@
 
         <!-- Audio Tab -->
         <div class="tab-pane fade" id="audio" role="tabpanel" aria-labelledby="audio-tab">
-
           <!-- Hidden div to store audio paths -->
+          {% if cover_audiopath and stego_audiopath %}
           <div id="audio-data"
               data-cover="{{ url_for('static', filename=cover_audiopath) }}"
               data-stego="{{ url_for('static', filename=stego_audiopath) }}">
           </div>
-
+          {% endif %}
           <div class="row">
             <div class="col-md-6">
+               
               <!--Cover audio-->
               <div class="section-box">
                 <h5>Original Audio</h5>

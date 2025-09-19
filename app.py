@@ -216,6 +216,8 @@ def index():
 def results():
     cover_filepath = session.get("cover")
     stego_filepath = session.get("stego")
+    cover_audiopath = None
+    stego_audiopath = None
     rgb_analysis = None
     audio_analysis = None
 
@@ -243,8 +245,6 @@ def results():
         audio_analysis = session.get("audio_analysis_filepath")
 
     else:
-        cover_audiopath = None
-        stego_audiopath = None
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
 
