@@ -235,10 +235,16 @@ def results():
         media_type = "audio"
         difference = compute_audio_diff(cover_filepath, stego_filepath)
 
+        #Pass audio paths to results
+        cover_audiopath = cover_filepath
+        stego_audiopath = stego_filepath
+
         save_audio_analysis_to_session(cover_filepath, stego_filepath)
         audio_analysis = session.get("audio_analysis_filepath")
 
     else:
+        cover_audiopath = None
+        stego_audiopath = None
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
 
@@ -246,6 +252,8 @@ def results():
         "results.html",
         cover_filepath=cover_filepath,
         stego_filepath=stego_filepath,
+        cover_audiopath=cover_audiopath,
+        stego_audiopath=stego_audiopath,
         media_type=media_type,
         difference=difference,
         rgb_analysis_filepath=rgb_analysis,

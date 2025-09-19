@@ -51,6 +51,13 @@
 
         <!-- Audio Tab -->
         <div class="tab-pane fade" id="audio" role="tabpanel" aria-labelledby="audio-tab">
+
+          <!-- Hidden div to store audio paths -->
+          <div id="audio-data"
+              data-cover="{{ url_for('static', filename=cover_audiopath) }}"
+              data-stego="{{ url_for('static', filename=stego_audiopath) }}">
+          </div>
+
           <div class="row">
             <div class="col-md-6">
               <!--Cover audio-->
@@ -91,5 +98,7 @@
 
 </section>
 
+<script src="https://unpkg.com/wavesurfer.js"></script>
+<script src="{{ url_for('static', filename='js/results.js') }}" type="text/javascript"></script>
 
 {% endblock %}
