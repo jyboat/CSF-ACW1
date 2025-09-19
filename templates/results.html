@@ -46,9 +46,7 @@
                         </div>
                     </div>
                 {% endif %}
-      
             </div>
-
          </div>
 
         <!-- Audio Tab -->
@@ -72,24 +70,24 @@
             </div>
           </div>
 
-          <div class="section-box text-center">
-                  <h6>LSB Waveform Difference</h6>
-                  <img src="static/dummy/waveform1.png" class="img-preview" id="waveformImage">
-                  <img src="static/dummy/waveform2.png" class="img-preview" id="waveformImage">
-          </div>
+            {% if audio_analysis_filepath %}
+              <div class="section-box text-center">
+                  <h6><strong>LSB Waveform Signal Difference</strong></h6>
+                  <img src="{{ url_for('static', filename=audio_analysis_filepath) }}" class="img-preview" />
+              </div>
+            {% endif %}
           
         </div>
     </div>
 
     <!-- Bottom Buttons -->
     <div class="mt-4 text-center">
-    <a href="/" class="btn btn-secondary">Back to Home</a>
-    <a href="static/dummy/diff_map.png" class="btn btn-success" download>Download Visualisation</a>
+        <a href="/" class="btn btn-secondary">Back to Home</a>
+        <a href="static/dummy/diff_map.png" class="btn btn-success" download>Download Visualisation</a>
+        <a href="{{ url_for('download_bundle') }}" class="btn btn-primary">
+          Download Stego Image and Key
+        </a>
     </div>
-
-    <a href="{{ url_for('download_bundle') }}" class="btn btn-success">
-      Download Stego Image and Key
-    </a>
 
 </section>
 

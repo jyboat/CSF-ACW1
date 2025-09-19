@@ -22,7 +22,13 @@ from capacity import (
 )
 
 # data_comparison helpers
-from data_comparison import save_images_to_session, save_audio_to_session, compute_pixel_diff, compute_audio_diff, save_rgb_analysis_to_session
+from data_comparison import (
+    save_images_to_session,
+    save_audio_to_session,
+    compute_pixel_diff,
+    compute_audio_diff,
+    save_rgb_analysis_to_session,
+    save_audio_analysis_to_session)
 
 # lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
@@ -209,6 +215,7 @@ def results():
     cover_filepath = session.get("cover")
     stego_filepath = session.get("stego")
     rgb_analysis = None
+    audio_analysis = None
 
     if not cover_filepath or not stego_filepath:
         flash("No current files found. Please embed your file first.", "error")
@@ -225,6 +232,10 @@ def results():
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
         media_type = "audio"
         difference = compute_audio_diff(cover_filepath, stego_filepath)
+
+        save_audio_analysis_to_session(cover_filepath, stego_filepath)
+        audio_analysis = session.get("audio_analysis_filepath")
+
     else:
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
@@ -235,7 +246,8 @@ def results():
         stego_filepath=stego_filepath,
         media_type=media_type,
         difference=difference,
-        rgb_analysis_filepath=rgb_analysis
+        rgb_analysis_filepath=rgb_analysis,
+        audio_analysis_filepath=audio_analysis
     )
 
 
@@ -554,6 +566,7 @@ def extract_media():
 
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))
+
 
 @app.route("/download/bundle")
 def download_bundle():

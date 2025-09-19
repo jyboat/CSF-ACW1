@@ -136,3 +136,47 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
 
     session['rgb_analysis_filepath'] = out_path.replace("static/", "")
     return True
+
+
+def save_audio_analysis_to_session(cover_path, stego_path, window=5000):
+    """
+    Perform basic steganalysis for audio using matplotlib.
+    Produces difference signal.
+    """
+
+    # Load both audio files
+    cover_audio, sr1 = sf.read("static/" + cover_path)
+    stego_audio, sr2 = sf.read("static/" + stego_path)
+
+    if sr1 != sr2:
+        raise ValueError("Sample rates differ between cover and stego audio")
+    if cover_audio.shape != stego_audio.shape:
+        raise ValueError("Cover and stego audio must have same shape")
+
+    # Difference signal
+    diff_signal = stego_audio - cover_audio
+
+    # Limit plotting window for clarity (first N samples)
+    n = min(window, len(cover_audio))
+    x = np.arange(n) / sr1  # time axis in seconds
+
+    plt.figure(figsize=(12, 4))
+
+    # 1. Difference signal
+    ax1 = plt.subplot(3, 1, 2)
+    ax1.plot(x, diff_signal[:n], color="red", linewidth=0.7)
+    ax1.set_title("Difference Signal (Stego - Cover)")
+    ax1.set_xlabel("Time [s]")
+    ax1.set_ylabel("Amplitude")
+
+    plt.tight_layout()
+
+    # Save plot to session
+    uid = uuid.uuid4().hex
+    out_path = f"static/tmp/user/audio/audio_analysis_{uid}.png"
+    plt.savefig(out_path)
+    plt.close()
+
+    session["audio_analysis_filepath"] = out_path.replace("static/", "")
+
+    return True
