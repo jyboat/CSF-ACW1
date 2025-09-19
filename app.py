@@ -216,10 +216,6 @@ def index():
 def results():
     cover_filepath = session.get("cover")
     stego_filepath = session.get("stego")
-    cover_audiopath = None
-    stego_audiopath = None
-    rgb_analysis = None
-    audio_analysis = None
 
     if not cover_filepath or not stego_filepath:
         flash("No current files found. Please embed your file first.", "error")
@@ -229,36 +225,42 @@ def results():
         media_type = "img"
         difference = compute_pixel_diff(cover_filepath, stego_filepath)
 
-        # Generate and save RGB pixel graph
+        # Save RGB analysis
         save_rgb_analysis_to_session(cover_filepath, stego_filepath)
         rgb_analysis = session.get("rgb_analysis_filepath")
+
+        return render_template(
+            "results.html",
+            media_type=media_type,
+            cover_filepath=cover_filepath,
+            stego_filepath=stego_filepath,
+            difference=difference,
+            rgb_analysis_filepath=rgb_analysis
+        )
 
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
         media_type = "audio"
         difference = compute_audio_diff(cover_filepath, stego_filepath)
 
-        #Pass audio paths to results
+        # Pass audio paths
         cover_audiopath = cover_filepath
         stego_audiopath = stego_filepath
 
         save_audio_analysis_to_session(cover_filepath, stego_filepath)
         audio_analysis = session.get("audio_analysis_filepath")
 
+        return render_template(
+            "results.html",
+            media_type=media_type,
+            cover_audiopath=cover_audiopath,
+            stego_audiopath=stego_audiopath,
+            difference=difference,
+            audio_analysis_filepath=audio_analysis
+        )
+
     else:
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
-
-    return render_template(
-        "results.html",
-        cover_filepath=cover_filepath,
-        stego_filepath=stego_filepath,
-        cover_audiopath=cover_audiopath,
-        stego_audiopath=stego_audiopath,
-        media_type=media_type,
-        difference=difference,
-        rgb_analysis_filepath=rgb_analysis,
-        audio_analysis_filepath=audio_analysis
-    )
 
 
 @app.route("/check", methods=["POST"])

@@ -4,99 +4,85 @@
 <section class="results container mt-4">
     <h2 class="text-center">Steganography Results & Visualisation</h2>
     <hr>
-    <!--Tabs-->
-    <ul class="nav nav-tabs" id="resultsTabs" role="tablist">
-        <li class="nav-item">
-            <a class="nav-link active" id="image-tab" data-toggle="tab" href="#image" role="tab" aria-controls="image" aria-selected="true">Image</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" id="audio-tab" data-toggle="tab" href="#audio" role="tab" aria-controls="audio" aria-selected="false">Audio</a>
-        </li>
 
-    </ul>
-
-    <div class="tab-content mt-4" id="resultTabContents">
-        <!-- Image Tab -->
-         <div class="tab-pane fade show active" id="image" role="tabpanel" aria-labelledby="image-tab">
-            <div class="row">
-              <!-- Cover Object -->
-              <div class="col-md-6">
-                <div class="section-box">
-                  <h5>Original Cover Object</h5>
+    {% if media_type == "img" %}
+    <!-- IMAGE DISPLAY -->
+    <div class="row">
+        <!-- Cover Object -->
+        <div class="col-md-6">
+            <div class="section-box">
+                <h5>Original Cover Object</h5>
                 <img src="{{ url_for('static', filename=cover_filepath) }}" class="cover-image" id="coverImage">
-                </div>
-              </div>
-              <!-- Stego object-->
-              <div class="col-md-6">
-                <div class="section-box">
-                  <h5>Stego Object</h5>
-                  <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
-              
-                </div>
-              </div>         
             </div>
-     
-            <div class="row">
-                {% if rgb_analysis_filepath %}
-                    <div class="col-md-12">
-                        <div class="section-box text-center">
-                            <h6><strong>RGB Channel Analysis</strong></h6>
-                            <img src="{{ url_for('static', filename=rgb_analysis_filepath) }}"
-                                 class="img-preview" id="rgbAnalysisImage">
-                        </div>
-                    </div>
-                {% endif %}
+        </div>
+        <!-- Stego Object -->
+        <div class="col-md-6">
+            <div class="section-box">
+                <h5>Stego Object</h5>
+                <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
             </div>
-         </div>
+        </div>
+    </div>
 
-        <!-- Audio Tab -->
-        <div class="tab-pane fade" id="audio" role="tabpanel" aria-labelledby="audio-tab">
-          <!-- Hidden div to store audio paths -->
-          {% if cover_audiopath and stego_audiopath %}
-          <div id="audio-data"
-              data-cover="{{ url_for('static', filename=cover_audiopath) }}"
-              data-stego="{{ url_for('static', filename=stego_audiopath) }}">
-          </div>
-          {% endif %}
-          <div class="row">
-            <div class="col-md-6">
-               
-              <!--Cover audio-->
-              <div class="section-box">
+    <!-- RGB Analysis -->
+    {% if rgb_analysis_filepath %}
+    <div class="row mt-4">
+        <div class="col-md-12 text-center">
+            <div class="section-box">
+                <h6><strong>RGB Channel Analysis</strong></h6>
+                <img src="{{ url_for('static', filename=rgb_analysis_filepath) }}" class="img-preview" id="rgbAnalysisImage">
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% elif media_type == "audio" %}
+    <!-- AUDIO DISPLAY -->
+    {% if cover_audiopath and stego_audiopath %}
+    <div id="audio-data"
+         data-cover="{{ url_for('static', filename=cover_audiopath) }}"
+         data-stego="{{ url_for('static', filename=stego_audiopath) }}">
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <!-- Cover Audio -->
+        <div class="col-md-6">
+            <div class="section-box">
                 <h5>Original Audio</h5>
                 <div id="waveform-cover"></div>
                 <button id="playCover" class="btn btn-primary btn-sm mt-2">Play / Pause</button>
-              </div>  
             </div>
-            <!--Stego audio-->
-            <div class="col-md-6">
-              <div class="section-box">
+        </div>
+        <!-- Stego Audio -->
+        <div class="col-md-6">
+            <div class="section-box">
                 <h5>Stego Audio</h5>
                 <div id="waveform-stego"></div>
                 <button id="playStego" class="btn btn-primary btn-sm mt-2">Play / Pause</button>
-              </div>  
             </div>
-          </div>
-
-            {% if audio_analysis_filepath %}
-              <div class="section-box text-center">
-                  <h6><strong>LSB Waveform Signal Difference</strong></h6>
-                  <img src="{{ url_for('static', filename=audio_analysis_filepath) }}" class="img-preview" />
-              </div>
-            {% endif %}
-          
         </div>
     </div>
+
+    <!-- LSB Waveform Analysis -->
+    {% if audio_analysis_filepath %}
+    <div class="section-box text-center mt-4">
+        <h6><strong>LSB Waveform Signal Difference</strong></h6>
+        <img src="{{ url_for('static', filename=audio_analysis_filepath) }}" class="img-preview">
+    </div>
+    {% endif %}
+    {% endif %}
 
     <!-- Bottom Buttons -->
     <div class="mt-4 text-center">
         <a href="/" class="btn btn-secondary">Back to Home</a>
         <a href="static/dummy/diff_map.png" class="btn btn-success" download>Download Visualisation</a>
+        {% if media_type == "img" %}
         <a href="{{ url_for('download_bundle') }}" class="btn btn-primary">
-          Download Stego Image and Key
+            Download Stego Image and Key
         </a>
+        {% endif %}
     </div>
-
 </section>
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
