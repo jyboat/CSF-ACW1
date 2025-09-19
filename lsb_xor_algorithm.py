@@ -178,6 +178,8 @@ def embed_xor_lsb_from_xy(cover_flat: np.ndarray, shape: tuple,
     Reuses your indices-based embed so all keystream/header logic stays the same.
     """
     indices = _linear_indices_from_xy(shape, start_x, start_y)
+    if len(shape) == 3 and shape[2] == 4:
+        indices = indices[indices % 4 != 3]
     # This will raise ValueError if capacity is insufficient
     return embed_xor_lsb_at_indices(cover_flat, payload, k=k, key=key, indices=indices)
 

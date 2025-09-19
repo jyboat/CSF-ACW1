@@ -6,7 +6,17 @@ import soundfile as sf
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
+from io import BytesIO
 
+def detect_has_alpha(cover_bytes: bytes) -> bool:
+    im = Image.open(BytesIO(cover_bytes))
+    # Case 1: explicit alpha channel
+    if im.mode in ("RGBA", "LA"):
+        return True
+    # Case 2 & 3: tRNS-based transparency (indexed or truecolor)
+    if "transparency" in getattr(im, "info", {}):
+        return True
+    return False
 
 def save_images_to_session(cover_bytes, stego_png):
     try:
@@ -116,7 +126,7 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
 
         # Stego: 
         ax.hist(s, bins=np.arange(257), range=(0, 256),
-                histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
+                histtype="stepfilled", alpha=1.0, label="Stego", color="blue")
 
         # Cover: 
         ax.hist(c, bins=np.arange(257), range=(0, 256),
@@ -136,7 +146,6 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
 
     session['rgb_analysis_filepath'] = out_path.replace("static/", "")
     return True
-
 
 def save_audio_analysis_to_session(cover_path, stego_path, window=5000):
     """

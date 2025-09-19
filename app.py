@@ -23,12 +23,14 @@ from capacity import (
 
 # data_comparison helpers
 from data_comparison import (
+    detect_has_alpha,
     save_images_to_session,
     save_audio_to_session,
     compute_pixel_diff,
     compute_audio_diff,
     save_rgb_analysis_to_session,
-    save_audio_analysis_to_session)
+    save_audio_analysis_to_session
+    )
 
 # lsb_xor_algorithm.py
 from lsb_xor_algorithm import (
@@ -389,8 +391,13 @@ def embed_media():
             if len(payload_bytes) > capacity_bytes:
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
                 return redirect(url_for("index"))
+            
+            has_alpha = detect_has_alpha(cover_bytes)
+            print("Has alpha:", has_alpha)  
 
-            flat_cover, shape, _ = image_to_flat(cover_bytes, mode="RGB")
+            mode = "RGBA" if has_alpha else "RGB"
+
+            flat_cover, shape, _ = image_to_flat(cover_bytes, mode=mode)
 
             if start_x_str and start_y_str:
                 stego_flat = embed_xor_lsb_from_xy(
@@ -398,12 +405,12 @@ def embed_media():
                     start_x=int(start_x_str), start_y=int(start_y_str)
                 )
             else:
-                eligible = select_complex_indices_by_key(cover_bytes, mode="RGB", key=key)
+                eligible = select_complex_indices_by_key(cover_bytes, mode=mode, key=key)
                 stego_flat = embed_xor_lsb_at_indices(
                     flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
                 )
 
-            stego_png = flat_to_image(stego_flat, shape, mode="RGB")
+            stego_png = flat_to_image(stego_flat, shape, mode=mode)
 
             # Best-effort session save; don't fail the request if it can't be saved.
             try:
