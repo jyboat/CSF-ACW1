@@ -8,7 +8,7 @@ import io, logging, re
 import os
 import wave
 import numpy as np
-from zipfile import ZipFile, ZIP_DEFLATED
+# from zipfile import ZipFile, ZIP_DEFLATED
 import uuid
 
 # capacity.py
@@ -29,18 +29,19 @@ from data_comparison import (
     compute_pixel_diff,
     compute_audio_diff,
     save_rgb_analysis_to_session,
-    save_audio_analysis_to_session
+    save_audio_analysis_to_session,
+    save_image_comparison_to_session,
+    save_gray_analysis_to_session
     )
 
-# lsb_xor_algorithm.py  (IMAGE: rewritten; AUDIO: DO NOT TOUCH)
+# lsb_xor_algorithm.py  
 from lsb_xor_algorithm import (
     image_to_flat,
     flat_to_image,
-    _linear_indices_from_xy,            # kept if you need elsewhere
-    embed_xor_lsb_from_xy,              # header@(0,0) then payload@(x,y)
-    embed_xor_lsb_auto,                 # auto-picks complex (x,y)
-    extract_xor_lsb_auto,               # reads header@(0,0), then payload
-    # --- audio imports ---
+    _linear_indices_from_xy,            
+    embed_xor_lsb_from_xy,              
+    embed_xor_lsb_auto,                 
+    extract_xor_lsb_auto,               
     embed_xor_lsb_audio, extract_xor_lsb_audio
 )
 
@@ -220,13 +221,21 @@ def results():
         save_rgb_analysis_to_session(cover_filepath, stego_filepath)
         rgb_analysis = session.get("rgb_analysis_filepath")
 
+        save_image_comparison_to_session(cover_filepath, stego_filepath)
+        diff_visual = session.get("diff_visualization_filepath")
+
+        save_gray_analysis_to_session(cover_filepath, stego_filepath)
+        gray_analysis = session.get("gray_analysis_filepath")
+
         return render_template(
             "results.html",
             media_type=media_type,
             cover_filepath=cover_filepath,
             stego_filepath=stego_filepath,
             difference=difference,
-            rgb_analysis_filepath=rgb_analysis
+            rgb_analysis_filepath=rgb_analysis,
+            diff_visualization_filepath=diff_visual,
+            gray_analysis_filepath=gray_analysis
         )
 
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
@@ -406,20 +415,20 @@ def embed_media():
                 pass
 
             # Build ZIP in memory
-            zip_buf = io.BytesIO()
-            with ZipFile(zip_buf, "w", ZIP_DEFLATED) as zf:
-                zf.writestr("stego.png", stego_png)
-                zf.writestr("readme.txt", "Extraction: upload stego image, enter same LSB and key. (start_x,start_y) are stored in the image)")
+            # zip_buf = io.BytesIO()
+            # with ZipFile(zip_buf, "w", ZIP_DEFLATED) as zf:
+            #     zf.writestr("stego.png", stego_png)
+            #     zf.writestr("readme.txt", "Extraction: upload stego image, enter same LSB and key. (start_x,start_y) are stored in the image)")
 
-            GENERATED_DIR = os.path.join(os.getcwd(), "zip")
-            os.makedirs(GENERATED_DIR, exist_ok=True)
+            # GENERATED_DIR = os.path.join(os.getcwd(), "zip")
+            # os.makedirs(GENERATED_DIR, exist_ok=True)
 
-            bundle_name = f"stego_bundle_{uuid.uuid4().hex}.zip"
-            bundle_path = os.path.join(GENERATED_DIR, bundle_name)
-            with open(bundle_path, "wb") as f:
-                f.write(zip_buf.getvalue())
+            # bundle_name = f"stego_bundle_{uuid.uuid4().hex}.zip"
+            # bundle_path = os.path.join(GENERATED_DIR, bundle_name)
+            # with open(bundle_path, "wb") as f:
+            #     f.write(zip_buf.getvalue())
 
-            session["stego_bundle"] = bundle_path
+            # session["stego_bundle"] = bundle_path
             return redirect(url_for("results"))
 
         except Exception as e:

@@ -115,10 +115,23 @@ def _linear_indices_from_xy(shape: tuple, start_x: int, start_y: int) -> np.ndar
         idx = np.concatenate([idx[start_idx:], idx[:start_idx]])
     return idx
 
-def _indices_excluding_alpha(shape: tuple, indices: np.ndarray) -> np.ndarray:
-    # If RGBA, skip alpha channel (index % 4 == 3)
+def _indices_excluding_alpha(shape: tuple, indices: np.ndarray, flat_cover: np.ndarray | None = None) -> np.ndarray:
+    """
+    - Skip alpha channel in RGBA.
+    - If RGBA *and* flat_cover is provided, also skip RGB of pixels where alpha==0.
+    """
     if len(shape) == 3 and shape[2] == 4:
-        return indices[indices % 4 != 3]
+        # drop alpha channel positions
+        keep = (indices % 4 != 3)
+        indices = indices[keep]
+        if flat_cover is not None:
+            # alpha bytes are every 4th byte starting at offset 3
+            alpha = flat_cover.reshape(-1)[3::4]  # length = H*W
+            # pixel index for each remaining channel byte
+            pix = indices // 4
+            visible = (alpha[pix] != 0)
+            indices = indices[visible]
+        return indices
     return indices
 
 def _write_bits_lsb_at_indices(target: np.ndarray, bits: np.ndarray, k: int, indices: np.ndarray) -> None:
@@ -166,30 +179,52 @@ def _sobel_magnitude(gray_uint8: np.ndarray) -> np.ndarray:
 
 def _auto_start_xy(image_bytes: bytes, mode: str, key: str, top_percent: float = 0.5) -> tuple[int, int]:
     """
-    Pick a high-complexity pixel using Sobel magnitude. To keep it stable yet keyed:
-    - Take the top `top_percent`% magnitudes
-    - Choose index = sha256(key|H|W|C) mod count
+    Pick a high-complexity *visible* pixel.
+    - Load as RGBA when available.
+    - Compute Sobel on gray, weighted by alpha (so transparent areas score ~0).
+    - Restrict the candidate pool to alpha>0 pixels.
     """
-    im = Image.open(io.BytesIO(image_bytes)).convert(mode)
-    arr = np.array(im, dtype=np.uint8)
-    if arr.ndim == 3:
-        # luminance-ish grayscale
-        gray = (0.299*arr[...,0] + 0.587*arr[...,1] + 0.114*arr[...,2]).astype(np.uint8)
+    im = Image.open(io.BytesIO(image_bytes))
+    if "A" in (mode or ""):
+        im = im.convert("RGBA")
     else:
-        gray = arr
+        im = im.convert("RGB")
 
-    mag = _sobel_magnitude(gray)
+    arr = np.array(im, dtype=np.uint8)
+
+    if arr.ndim == 3 and arr.shape[2] == 4:
+        rgb = arr[..., :3].astype(np.float32)
+        a   = arr[..., 3].astype(np.float32) / 255.0
+        # luminance
+        gray = (0.299*rgb[...,0] + 0.587*rgb[...,1] + 0.114*rgb[...,2])
+        # damp gray where alpha is low so edges in transparent regions are deprioritized
+        gray = (gray * a).astype(np.uint8)
+        mag  = _sobel_magnitude(gray)
+        visible = (a > 0.0)
+    else:
+        gray = (0.299*arr[...,0] + 0.587*arr[...,1] + 0.114*arr[...,2]).astype(np.uint8) if arr.ndim == 3 else arr
+        mag  = _sobel_magnitude(gray)
+        visible = np.ones_like(mag, dtype=bool)
+
     H, W = mag.shape
-    n = H * W
-    k = max(1, int(n * (top_percent / 100.0)))
-    flat_idx = np.argpartition(mag.ravel(), -k)[-k:]
-    # deterministic selection by key hash
-    HWC = (H, W, (arr.shape[2] if arr.ndim == 3 else 1))
-    seed_material = f"{key}|{HWC[0]}|{HWC[1]}|{HWC[2]}".encode()
-    pick = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], 'little') % flat_idx.size
-    chosen = int(flat_idx[pick])
-    y = chosen // W
-    x = chosen % W
+    # consider only visible pixels
+    vis_idx = np.flatnonzero(visible.ravel())
+    if vis_idx.size == 0:
+        # fallback: no alpha or everything invisible; use all pixels
+        vis_idx = np.arange(H*W, dtype=np.int64)
+
+    # take the top X% (default: 0.5% as before)
+    k = max(1, int(vis_idx.size * (top_percent / 100.0)))
+    # magnitudes only over visible indices
+    vis_mag = mag.ravel()[vis_idx]
+    top_k_idx_in_vis = np.argpartition(vis_mag, -k)[-k:]
+    pool = vis_idx[top_k_idx_in_vis]
+
+    # deterministic keyed pick
+    seed_material = f"{key}|{H}|{W}|{arr.shape[2] if arr.ndim==3 else 1}".encode()
+    pick = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], 'little') % pool.size
+    chosen = int(pool[pick])
+    y, x = divmod(chosen, W)
     return x, y
 
 # =====================================
@@ -211,7 +246,9 @@ def embed_xor_lsb_from_xy(cover_flat: np.ndarray, shape: tuple,
     K_hdr  = keystream_bits(key, len(H_bits))
     C_hdr  = H_bits ^ K_hdr
 
-    idx_hdr = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, 0, 0))
+    # header indices
+    idx_hdr = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, 0, 0), cover_flat)
+
     _write_bits_lsb_at_indices(out, C_hdr, k, idx_hdr)
 
     # 2) PAYLOAD @ (start_x, start_y)
@@ -219,7 +256,8 @@ def embed_xor_lsb_from_xy(cover_flat: np.ndarray, shape: tuple,
     K_pay  = keystream_bits(key, len(P_bits))
     C_pay  = P_bits ^ K_pay
 
-    idx_pay = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, start_x, start_y))
+    # payload indices
+    idx_pay = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, start_x, start_y), cover_flat)
 
     # Avoid overlap if start is (0,0): skip header groups
     header_groups = (IMG_HDR_V2_SIZE * 8 + k - 1) // k
@@ -239,7 +277,7 @@ def extract_xor_lsb_auto(stego_flat: np.ndarray, shape: tuple, k: int, key: str)
     Read STG2 header at (0,0) to get length + (start_x, start_y), then read payload from there.
     """
     # 1) header from (0,0)
-    idx_hdr = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, 0, 0))
+    idx_hdr = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, 0, 0), stego_flat)
     C_hdr   = _read_bits_lsb_at_indices(stego_flat, k, IMG_HDR_V2_SIZE * 8, idx_hdr)
     K_hdr   = keystream_bits(key, len(C_hdr))
     M_hdr   = C_hdr ^ K_hdr
@@ -248,7 +286,7 @@ def extract_xor_lsb_auto(stego_flat: np.ndarray, shape: tuple, k: int, key: str)
 
     # 2) payload from (start_x,start_y)
     total_bits = hdr.length * 8
-    idx_pay = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, hdr.start_x, hdr.start_y))
+    idx_pay = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, hdr.start_x, hdr.start_y), stego_flat)
 
     # If payload started at (0,0), skip the header region
     header_groups = (IMG_HDR_V2_SIZE * 8 + k - 1) // k
@@ -332,40 +370,40 @@ def extract_xor_lsb_auto(stego_flat: np.ndarray, shape: tuple, k: int, key: str)
 # plt.show()
 
 # RGB Analysis Plot
-cover_img = Image.open("test/img_rgb_100x100_RGB.png").convert("RGB")
-stego_img = Image.open("stego_rgb_100x100.png").convert("RGB")
+# cover_img = Image.open("test/img_rgb_100x100_RGB.png").convert("RGB")
+# stego_img = Image.open("stego_rgb_100x100.png").convert("RGB")
 
-# Convert the images to NumPy arrays of shape 
-# Shape = (height, width, 3)
-cover_arr = np.array(cover_img)
-stego_arr = np.array(stego_img)
+# # Convert the images to NumPy arrays of shape 
+# # Shape = (height, width, 3)
+# cover_arr = np.array(cover_img)
+# stego_arr = np.array(stego_img)
 
-channel_names = ["Red", "Green", "Blue"]
-colors = ["red", "green", "blue"]
+# channel_names = ["Red", "Green", "Blue"]
+# colors = ["red", "green", "blue"]
 
-plt.figure(figsize=(15, 6))
+# plt.figure(figsize=(15, 6))
 
-# indexes the channel (0=Red, 1=Green, 2=Blue)
-for i, name in enumerate(["Red", "Green", "Blue"]):
-    ax = plt.subplot(1, 3, i+1)
-    c = cover_arr[..., i].ravel()
-    s = stego_arr[..., i].ravel()
+# # indexes the channel (0=Red, 1=Green, 2=Blue)
+# for i, name in enumerate(["Red", "Green", "Blue"]):
+#     ax = plt.subplot(1, 3, i+1)
+#     c = cover_arr[..., i].ravel()
+#     s = stego_arr[..., i].ravel()
 
-    # Stego: 
-    ax.hist(s, bins=np.arange(257), range=(0, 256),
-            histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
+#     # Stego: 
+#     ax.hist(s, bins=np.arange(257), range=(0, 256),
+#             histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
 
-    # Cover: 
-    ax.hist(c, bins=np.arange(257), range=(0, 256),
-            histtype="stepfilled", linewidth=1.0, label="Cover", color="black",)
+#     # Cover: 
+#     ax.hist(c, bins=np.arange(257), range=(0, 256),
+#             histtype="stepfilled", linewidth=1.0, label="Cover", color="black",)
 
-    ax.set_title(f"{name} channel")
-    ax.set_xlabel("Pixel intensity"); ax.set_ylabel("No. of pixels")
-    ax.set_xlim(0, 255); 
-    ax.legend()
+#     ax.set_title(f"{name} channel")
+#     ax.set_xlabel("Pixel intensity"); ax.set_ylabel("No. of pixels")
+#     ax.set_xlim(0, 255); 
+#     ax.legend()
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 
 def make_audio_header(payload: bytes, start_sample: int, use_complex: bool) -> bytes:
     sha8 = hashlib.sha256(payload).digest()[:8]

@@ -7,22 +7,45 @@
 
     {% if media_type == "img" %}
     <!-- IMAGE DISPLAY -->
-    <div class="row">
+    <!-- <div class="row"> -->
         <!-- Cover Object -->
-        <div class="col-md-6">
+        <!-- <div class="col-md-6">
             <div class="section-box">
                 <h5>Original Cover Object</h5>
                 <img src="{{ url_for('static', filename=cover_filepath) }}" class="cover-image" id="coverImage">
             </div>
-        </div>
+        </div> -->
         <!-- Stego Object -->
-        <div class="col-md-6">
+        <!-- <div class="col-md-6">
             <div class="section-box">
-                <h5>Stego Object</h5>
-                <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
+                <h5>Stego Object</h5> -->
+                <!-- <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
+            </div> -->
+        <!-- </div> -->
+    <!-- </div> -->
+    
+    <!-- Side-by-side Visual Comparison -->
+    {% if diff_visualization_filepath %}
+    <div class="row mt-4">
+        <div class="col-md-12 text-center">
+            <div class="section-box">
+                <h6><strong>Cover vs Stego (Difference)</strong></h6>
+                <img src="{{ url_for('static', filename=diff_visualization_filepath) }}" class="img-preview" id="imgComparison">
             </div>
         </div>
     </div>
+    {% endif %}
+    
+    {% if gray_analysis_filepath %}
+    <div class="row mt-4">
+        <div class="col-md-12 text-center">
+            <div class="section-box">
+                <h6><strong>Grayscale Intensity Analysis</strong></h6>
+                <img src="{{ url_for('static', filename=gray_analysis_filepath) }}" class="img-preview" id="grayAnalysisImage">
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- RGB Analysis -->
     {% if rgb_analysis_filepath %}
@@ -84,6 +107,8 @@
         {% endif %}
     </div>
 </section>
+
+
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
 <script src="{{ url_for('static', filename='js/results.js') }}" type="text/javascript"></script>

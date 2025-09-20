@@ -189,3 +189,120 @@ def save_audio_analysis_to_session(cover_path, stego_path, window=5000):
     session["audio_analysis_filepath"] = out_path.replace("static/", "")
 
     return True
+
+def save_image_comparison_to_session(cover_path: str, stego_path: str) -> bool:
+    """
+    Side-by-side comparison with a background-aware difference heatmap:
+    - Load as RGBA (preserve transparency)
+    - Compute RGB difference
+    - Mask pixels that are fully transparent in BOTH images
+    - Render masked pixels transparent in the heatmap
+    """
+
+    cover_rgba = np.array(Image.open("static/" + cover_path).convert("RGBA"))
+    stego_rgba = np.array(Image.open("static/" + stego_path).convert("RGBA"))
+
+    if cover_rgba.shape != stego_rgba.shape:
+        raise ValueError("Cover and stego images must have same dimensions")
+
+    # Split channels
+    c_rgb, c_a = cover_rgba[..., :3].astype(np.int16), cover_rgba[..., 3].astype(np.uint8)
+    s_rgb, s_a = stego_rgba[..., :3].astype(np.int16), stego_rgba[..., 3].astype(np.uint8)
+
+    # Difference on RGB channels
+    diff = np.abs(s_rgb - c_rgb).mean(axis=2).astype(np.float32)  # 0..255
+
+    # Mask: ignore background where BOTH are fully transparent
+    bg_mask = (c_a == 0) & (s_a == 0)
+    diff_masked = np.ma.array(diff, mask=bg_mask)
+
+    # Contrast stretch on non-masked values
+    if diff_masked.count() > 0:
+        vals = diff_masked.compressed()
+        p_low, p_high = np.percentile(vals, [1, 99])
+        if p_high <= p_low:
+            p_low, p_high = 0.0, 1.0
+        diff_vis = np.ma.clip((diff_masked - p_low) / (p_high - p_low), 0, 1)
+    else:
+        diff_vis = diff_masked  # all masked
+
+    # Colormap with transparent for masked (background) pixels
+    cmap = plt.cm.magma.copy()
+    cmap.set_bad(alpha=0.0)
+
+    # For the side-by-side cover/stego previews, composite RGBA on white so they look natural
+    def composite_on_white(rgba):
+        rgb = rgba[..., :3].astype(np.float32)
+        a = (rgba[..., 3:4].astype(np.float32)) / 255.0
+        return (rgb * a + 255.0 * (1.0 - a)).astype(np.uint8)
+
+    cover_vis = composite_on_white(cover_rgba)
+    stego_vis = composite_on_white(stego_rgba)
+
+    # ---- Plot ----
+    plt.figure(figsize=(12, 4), dpi=110)
+
+    ax1 = plt.subplot(1, 3, 1)
+    ax1.imshow(cover_vis)
+    ax1.set_title("Cover")
+    ax1.axis("off")
+
+    ax2 = plt.subplot(1, 3, 2)
+    ax2.imshow(stego_vis)
+    ax2.set_title("Stego")
+    ax2.axis("off")
+
+    ax3 = plt.subplot(1, 3, 3)
+    ax3.imshow(diff_vis, cmap=cmap, vmin=0, vmax=1)
+    ax3.set_title("Difference")
+    ax3.axis("off")
+
+    plt.tight_layout()
+    uid = uuid.uuid4().hex
+    out_path = f"static/tmp/user/img/diff_visual_{uid}.png"
+    plt.savefig(out_path, bbox_inches="tight", transparent=True)
+    plt.close()
+
+    session["diff_visualization_filepath"] = out_path.replace("static/", "")
+    return True
+
+def save_gray_analysis_to_session(cover_path, stego_path):
+    """
+    Build a grayscale/luminance intensity histogram:
+    - Convert both images to 'L' (8-bit grayscale)
+    - Overlay histograms for Cover vs Stego
+    - Saves to static/tmp/user/img/gray_analysis_<uuid>.png
+    - Stores path in session['gray_analysis_filepath']
+    """
+
+    cover_gray = np.array(Image.open("static/" + cover_path).convert("L"))
+    stego_gray = np.array(Image.open("static/" + stego_path).convert("L"))
+
+    if cover_gray.shape != stego_gray.shape:
+        raise ValueError("Cover and stego images must have same dimensions")
+
+    c = cover_gray.ravel()
+    s = stego_gray.ravel()
+
+    plt.figure(figsize=(8, 4.5), dpi=110)
+
+    # Stego on top (filled), Cover beneath (outlined) – consistent with your RGB plot
+    plt.hist(s, bins=np.arange(257), range=(0, 256),
+             histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
+    plt.hist(c, bins=np.arange(257), range=(0, 256),
+             histtype="stepfilled", linewidth=1.2, label="Cover", color="purple")
+
+    plt.title("Grayscale Intensity Distribution")
+    plt.xlabel("Pixel intensity (0–255)")
+    plt.ylabel("No. of pixels")
+    plt.xlim(0, 255)
+    plt.legend()
+    plt.tight_layout()
+
+    uid = uuid.uuid4().hex
+    out_path = f"static/tmp/user/img/gray_analysis_{uid}.png"
+    plt.savefig(out_path)
+    plt.close()
+
+    session['gray_analysis_filepath'] = out_path.replace("static/", "")
+    return True
