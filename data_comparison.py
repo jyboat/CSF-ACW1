@@ -114,7 +114,7 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
     stego_img = np.array(Image.open("static/" + stego_path).convert("RGB"))
 
     channel_names = ["Red", "Green", "Blue"]
-    colors = ["red", "green", "blue"]
+    # colors = ["red", "green", "blue"]
 
     plt.figure(figsize=(12, 5))
     

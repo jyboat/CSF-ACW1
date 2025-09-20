@@ -32,16 +32,15 @@ from data_comparison import (
     save_audio_analysis_to_session
     )
 
-# lsb_xor_algorithm.py
+# lsb_xor_algorithm.py  (IMAGE: rewritten; AUDIO: DO NOT TOUCH)
 from lsb_xor_algorithm import (
-    build_img_key,
-    select_complex_indices_by_key,
-    embed_xor_lsb_at_indices,
-    embed_xor_lsb_from_xy,
-    extract_xor_lsb_at_indices,
-    extract_xor_lsb_from_xy,
-    flat_to_image,
     image_to_flat,
+    flat_to_image,
+    _linear_indices_from_xy,            # kept if you need elsewhere
+    embed_xor_lsb_from_xy,              # header@(0,0) then payload@(x,y)
+    embed_xor_lsb_auto,                 # auto-picks complex (x,y)
+    extract_xor_lsb_auto,               # reads header@(0,0), then payload
+    # --- audio imports ---
     embed_xor_lsb_audio, extract_xor_lsb_audio
 )
 
@@ -60,12 +59,10 @@ if not app.logger.handlers:
 # =============== WAV / PCM AUDIO HELPERS =============
 # =====================================================
 
-
 def _rng_from_key(key: str) -> np.random.RandomState:
     # Make a stable seed from the key string
     seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
     return np.random.RandomState(int(seed) & 0x7FFFFFFF)
-
 
 def _wav_bytes_to_np(wav_bytes: bytes):
     """
@@ -117,7 +114,6 @@ def _wav_bytes_to_np(wav_bytes: bytes):
     )
     return samples, params
 
-
 def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
     """
     Convert 1-D interleaved samples back into WAV bytes with original params.
@@ -157,7 +153,6 @@ def _np_to_wav_bytes(samples: np.ndarray, params: dict) -> bytes:
         w.writeframes(frames_bytes)
     return bio_out.getvalue()
 
-
 def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     """
     For now: use ALL sample positions, shuffled by key.
@@ -168,7 +163,6 @@ def _select_audio_indices(samples: np.ndarray, key: str) -> np.ndarray:
     rng = _rng_from_key(key)
     rng.shuffle(idx)
     return idx
-
 
 def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
                      start_sample: int = 0, use_complex: bool = False) -> bytes:
@@ -193,7 +187,6 @@ def _embed_audio_wav(wav_bytes: bytes, payload: bytes, k: int, key: str,
     # Pack back to WAV
     return _np_to_wav_bytes(stego, params)
 
-
 def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
     samples, _ = _wav_bytes_to_np(wav_bytes)
     payload, _hdr = extract_xor_lsb_audio(samples, k=k, key=key)
@@ -203,14 +196,12 @@ def _extract_audio_wav(wav_bytes: bytes, k: int, key: str) -> bytes:
 # ==================== ROUTES =========================
 # =====================================================
 
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     # If the main form posts to "/", delegate to the embed logic.
     if request.method == "POST":
         return embed_media()
     return render_template("index.html")
-
 
 @app.route("/results")
 def results():
@@ -262,7 +253,6 @@ def results():
         flash("File incompatible. Please embed your file first.", "error")
         return redirect(url_for("index"))
 
-
 @app.route("/check", methods=["POST"])
 def check_capacity_form():
     cover = request.files.get("coverFile")
@@ -300,7 +290,6 @@ def check_capacity_form():
 
     return redirect(url_for("index"))
 
-
 @app.route("/api/check-capacity", methods=["POST"])
 def api_check_capacity():
     cover = request.files.get("coverFile")
@@ -332,7 +321,6 @@ def api_check_capacity():
 
     return jsonify({"ok": True, "capacity_bytes": cap})
 
-
 @app.route("/embed", methods=["POST"])
 def embed_media():
     """
@@ -344,21 +332,7 @@ def embed_media():
 
     start_x_str = request.form.get("startX", "").strip()
     start_y_str = request.form.get("startY", "").strip()
-
-    if start_x_str and start_y_str:
-        key = build_img_key(user_key, lsb_str, start_x_str, start_y_str)
-    else:
-        # To Do: Change 0 to random value if no pixel is clicked
-        key = build_img_key(user_key, lsb_str, 0, 0)
-
-    print(f"KEY {key}")
-    
-    text_payload_str = request.form.get("textPayload", "")
-    payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
-    start_sample_str = request.form.get("startSample", "").strip()
-    auto_flag = (request.form.get("autoStart") or request.form.get("useComplex") or "").strip().lower()
-    use_complex = auto_flag in {"1", "true"}
-    start_sample = int(start_sample_str) if start_sample_str.isdigit() else 0
+    key = user_key
 
     app.logger.info("EMBED fields → useComplex=%r startSample=%r lsb=%r key=%r",
                     request.form.get("useComplex"),
@@ -382,6 +356,9 @@ def embed_media():
         flash("Key is required.", "error")
         return redirect(url_for("index"))
 
+    text_payload_str = request.form.get("textPayload", "")
+    payload_file = next((f for f in request.files.getlist("payloadFile") if f and f.filename), None)
+
     # Accept either text or file payload
     if text_payload_str and payload_file:
         flash("Choose text OR a file (not both).", "error")
@@ -401,23 +378,23 @@ def embed_media():
             if len(payload_bytes) > capacity_bytes:
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
                 return redirect(url_for("index"))
-            
-            has_alpha = detect_has_alpha(cover_bytes)
-            print("Has alpha:", has_alpha)  
 
+            has_alpha = detect_has_alpha(cover_bytes)
             mode = "RGBA" if has_alpha else "RGB"
 
             flat_cover, shape, _ = image_to_flat(cover_bytes, mode=mode)
 
             if start_x_str and start_y_str:
+                # user clicked; use their (x,y)
+                sx = int(start_x_str); sy = int(start_y_str)
                 stego_flat = embed_xor_lsb_from_xy(
                     flat_cover, shape, payload_bytes, k=lsb, key=key,
-                    start_x=int(start_x_str), start_y=int(start_y_str)
+                    start_x=sx, start_y=sy
                 )
             else:
-                eligible = select_complex_indices_by_key(cover_bytes, mode=mode, key=key)
-                stego_flat = embed_xor_lsb_at_indices(
-                    flat_cover, payload_bytes, k=lsb, key=key, indices=eligible
+                # auto-pick complex start (keyed) + embed
+                stego_flat = embed_xor_lsb_auto(
+                    cover_bytes, flat_cover, shape, payload_bytes, k=lsb, key=key, mode=mode
                 )
 
             stego_png = flat_to_image(stego_flat, shape, mode=mode)
@@ -428,40 +405,28 @@ def embed_media():
             except Exception:
                 pass
 
-            # return send_file(
-            #     io.BytesIO(stego_png),
-            #     mimetype="image/png",
-            #     as_attachment=True,
-            #     download_name="stego.png",
-            # )
-
             # Build ZIP in memory
             zip_buf = io.BytesIO()
             with ZipFile(zip_buf, "w", ZIP_DEFLATED) as zf:
                 zf.writestr("stego.png", stego_png)
-                # To Do: Encrypt the key before zipping
-                zf.writestr("stego_key.txt", key)
+                zf.writestr("readme.txt", "Extraction: upload stego image, enter same LSB and key. (start_x,start_y) are stored in the image)")
 
-            # Ensure target folder exists
             GENERATED_DIR = os.path.join(os.getcwd(), "zip")
-            os.makedirs(GENERATED_DIR, exist_ok=True)   # <-- important
+            os.makedirs(GENERATED_DIR, exist_ok=True)
 
-            # Save ZIP to disk
             bundle_name = f"stego_bundle_{uuid.uuid4().hex}.zip"
             bundle_path = os.path.join(GENERATED_DIR, bundle_name)
             with open(bundle_path, "wb") as f:
                 f.write(zip_buf.getvalue())
 
-            # Save it for download in results page
             session["stego_bundle"] = bundle_path
-
             return redirect(url_for("results"))
 
         except Exception as e:
             flash(f"Embed (image) failed: {e}", "error")
             return redirect(url_for("index"))
 
-    # -------- AUDIO PATH (WAV) --------
+    # -------- AUDIO PATH (WAV) -------- 
     if is_wav_extension(cover.filename):
         try:
             meta = load_audio_meta(cover_bytes)
@@ -474,6 +439,11 @@ def embed_media():
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (theoretical).", "error")
                 return redirect(url_for("index"))
 
+            start_sample_str = request.form.get("startSample", "").strip()
+            auto_flag = (request.form.get("autoStart") or request.form.get("useComplex") or "").strip().lower()
+            use_complex = auto_flag in {"1", "true"}
+            start_sample = int(start_sample_str) if start_sample_str.isdigit() else 0
+
             stego_wav = _embed_audio_wav(
                 cover_bytes, payload_bytes, k=lsb, key=key,
                 start_sample=start_sample,
@@ -484,13 +454,6 @@ def embed_media():
                 save_audio_to_session(cover_bytes, stego_wav)
             except Exception:
                 pass
-
-            # return send_file(
-            #     io.BytesIO(stego_wav),
-            #     mimetype="audio/wav",
-            #     as_attachment=True,
-            #     download_name="stego.wav",
-            # )
 
             return redirect(url_for("results"))
 
@@ -508,7 +471,6 @@ def embed_media():
     )
     return redirect(url_for("index"))
 
-
 @app.route("/extract", methods=["POST"])
 def extract_media():
     """
@@ -516,13 +478,7 @@ def extract_media():
     """
     stego = request.files.get("stegoFile")
     lsb_str = request.form.get("lsbCount", "1")
-    # To Do: Read from file instead
     key = request.form.get("stegoKey", "").strip()
-
-    mx = re.search(r'x\s*[:=]\s*(-?\d+|NA)', key)
-    my = re.search(r'y\s*[:=]\s*(-?\d+|NA)', key)
-    sx = None if not mx else (None if mx.group(1).upper() == "NA" else int(mx.group(1)))
-    sy = None if not my else (None if my.group(1).upper() == "NA" else int(my.group(1)))
 
     if not stego or not stego.filename:
         flash("Upload a stego file.", "error")
@@ -545,17 +501,13 @@ def extract_media():
     # -------- IMAGE PATH --------
     if is_image_extension(stego.filename):
         try:
-            # EXTRACT (image path)
-            flat, shape, _ = image_to_flat(file_bytes, mode="RGB")
+            has_alpha = detect_has_alpha(file_bytes)
+            mode = "RGBA" if has_alpha else "RGB"
 
-            if sx and sy:
-                payload = extract_xor_lsb_from_xy(
-                    flat, shape, k=lsb, key=key,
-                    start_x=int(sx), start_y=int(sy)
-                )
-            else:
-                eligible = select_complex_indices_by_key(file_bytes, mode="RGB", key=key)
-                payload = extract_xor_lsb_at_indices(flat, k=lsb, key=key, indices=eligible)
+            flat, shape, _ = image_to_flat(file_bytes, mode=mode)
+
+            # Reads STG2 header at (0,0), then payload from (x,y) stored in header
+            payload = extract_xor_lsb_auto(flat, shape, k=lsb, key=key)
 
             return send_file(
                 io.BytesIO(payload),
@@ -567,7 +519,7 @@ def extract_media():
             flash(f"Extract (image) failed: {e}", "error")
             return redirect(url_for("index"))
 
-    # -------- AUDIO PATH --------
+    # -------- AUDIO PATH -------- 
     if is_wav_extension(stego.filename):
         try:
             payload = _extract_audio_wav(file_bytes, k=lsb, key=key)
@@ -584,7 +536,6 @@ def extract_media():
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))
 
-
 @app.route("/download/bundle")
 def download_bundle():
     bundle_path = session.get("stego_bundle")
@@ -597,7 +548,6 @@ def download_bundle():
         as_attachment=True,
         download_name=os.path.basename(bundle_path),
     )
-
 
 if __name__ == "__main__":
     app.debug = True

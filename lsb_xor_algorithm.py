@@ -14,7 +14,9 @@ class AudioHeader:
     flags: int = 0
     _pad: int = 0
 
-# Image helpers
+# =========================
+# ===== IMAGE HELPERS =====
+# =========================
 
 def image_to_flat(image_bytes: bytes, mode: str = "RGB"):
     im = Image.open(io.BytesIO(image_bytes)).convert(mode)
@@ -29,42 +31,17 @@ def flat_to_image(flat: np.ndarray, shape: tuple, mode: str = "RGB") -> bytes:
     buf.seek(0)
     return buf.getvalue()
 
-# Edge/texture (complex) selection
-
-# def _sobel_magnitude(gray_uint8: np.ndarray) -> np.ndarray:
-#     g = gray_uint8.astype(np.float32)
-#     kx = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], dtype=np.float32)
-#     ky = np.array([[-1,-2,-1],[0,0,0],[1,2,1]], dtype=np.float32)
-#     gpad = np.pad(g, 1, mode='reflect')
-#     Gx = (kx[0,0]*gpad[:-2,:-2] + kx[0,1]*gpad[:-2,1:-1] + kx[0,2]*gpad[:-2,2:] +
-#           kx[1,0]*gpad[1:-1,:-2] + kx[1,1]*gpad[1:-1,1:-1] + kx[1,2]*gpad[1:-1,2:] +
-#           kx[2,0]*gpad[2:,  :-2] + kx[2,1]*gpad[2:,  1:-1] + kx[2,2]*gpad[2:,  2:])
-#     Gy = (ky[0,0]*gpad[:-2,:-2] + ky[0,1]*gpad[:-2,1:-1] + ky[0,2]*gpad[:-2,2:] +
-#           ky[1,0]*gpad[1:-1,:-2] + ky[1,1]*gpad[1:-1,1:-1] + ky[1,2]*gpad[1:-1,2:] +
-#           ky[2,0]*gpad[2:,  :-2] + ky[2,1]*gpad[2:,  1:-1] + ky[2,2]*gpad[2:,  2:])
-#     return np.hypot(Gx, Gy)
-
-def select_complex_indices_by_key(image_bytes: bytes, mode="RGB", key: str = "") -> np.ndarray:
-    im = Image.open(io.BytesIO(image_bytes)).convert(mode)
-    arr = np.array(im, dtype=np.uint8)
-    N = arr.size
-    idx = np.arange(N, dtype=np.int64)
-    # seed from key + dimensions so it’s stable for same (H,W,C)
-    HWC = (*arr.shape,) if arr.ndim == 3 else (*arr.shape, 1)
-    seed_material = f"{key}|{HWC[0]}|{HWC[1]}|{HWC[2]}".encode()
-    seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], 'little') & 0x7FFFFFFF
-    rng = np.random.RandomState(seed)
-    rng.shuffle(idx)
-    return idx
-
-# XOR keystream + LSB embed/extract (indices-aware)
+# ============================
+# ====== KEYSTREAM (XOR) =====
+# ============================
 
 def keystream_bits(key: str, n_bits: int) -> np.ndarray:
     if n_bits <= 0:
         return np.empty(0, dtype=np.uint8)
     counter, out = 0, []
+    key_bytes = key.encode()
     while len(out) < n_bits:
-        block = hashlib.sha256(key.encode() + _struct.pack(">Q", counter)).digest()
+        block = hashlib.sha256(key_bytes + _struct.pack(">Q", counter)).digest()
         for byte in block:
             for i in range(8):
                 out.append((byte >> (7 - i)) & 1)
@@ -72,78 +49,47 @@ def keystream_bits(key: str, n_bits: int) -> np.ndarray:
                     return np.array(out, dtype=np.uint8)
         counter += 1
 
+# =========================================
+# ===== IMAGE HEADER (STG2 with x,y)  =====
+# =========================================
+
 @dataclass
 class Header:
-    magic: bytes = b"STG1"
-    length: int = 0
-    sha8: bytes = b""
+    magic: bytes = b"STG2"      # 4
+    length: int = 0             # 4 (uint32 LE)
+    sha8: bytes = b""           # 8
+    start_x: int = 0            # 4 (int32 LE)
+    start_y: int = 0            # 4 (int32 LE)
 
-def make_header(payload: bytes) -> bytes:
-    h = Header(length=len(payload), sha8=hashlib.sha256(payload).digest()[:8])
-    return h.magic + _struct.pack("<I", h.length) + h.sha8
+IMG_HDR_V2_SIZE = 24  # total bytes
+
+def make_header(payload: bytes, start_x: int = 0, start_y: int = 0) -> bytes:
+    h = Header(
+        length=len(payload),
+        sha8=hashlib.sha256(payload).digest()[:8],
+        start_x=int(start_x),
+        start_y=int(start_y),
+    )
+    return (
+        h.magic +
+        _struct.pack("<I", h.length) +
+        h.sha8 +
+        _struct.pack("<i", h.start_x) +
+        _struct.pack("<i", h.start_y)
+    )
 
 def parse_header(hdr: bytes) -> Header:
-    if len(hdr) < 16 or hdr[:4] != b"STG1":
-        raise ValueError("Invalid header")
-    length = _struct.unpack("<I", hdr[4:8])[0]
-    sha8 = hdr[8:16]
-    return Header(magic=b"STG1", length=length, sha8=sha8)
+    if len(hdr) < IMG_HDR_V2_SIZE or hdr[:4] != b"STG2":
+        raise ValueError("Invalid STG2 image header")
+    length  = _struct.unpack("<I", hdr[4:8])[0]
+    sha8    = hdr[8:16]
+    start_x = _struct.unpack("<i", hdr[16:20])[0]
+    start_y = _struct.unpack("<i", hdr[20:24])[0]
+    return Header(magic=b"STG2", length=length, sha8=sha8, start_x=start_x, start_y=start_y)
 
-def embed_xor_lsb_at_indices(cover: np.ndarray, payload: bytes, k: int, key: str,
-                             indices: np.ndarray) -> np.ndarray:
-    header = make_header(payload)
-    onwire = header + payload
-    M = np.unpackbits(np.frombuffer(onwire, dtype=np.uint8))
-    K = keystream_bits(key, len(M))
-    C = M ^ K
-    pad = (-len(C)) % k
-    if pad:
-        C = np.concatenate([C, np.zeros(pad, dtype=np.uint8)])
-    groups = C.reshape(-1, k)
-    needed = groups.shape[0]
-    if needed > len(indices):
-        raise ValueError("Not enough complex locations")
-    out = cover.copy()
-    mask = ~((1 << k) - 1)
-    for i, grp in enumerate(groups):
-        v = 0
-        for b in grp:
-            v = (v << 1) | int(b)
-        j = int(indices[i])
-        out[j] = (int(out[j]) & mask) | v
-    return out
-
-def extract_xor_lsb_at_indices(stego: np.ndarray, k: int, key: str, indices: np.ndarray) -> bytes:
-    header_bits = 16 * 8
-    groups_header = (header_bits + k - 1) // k
-    bits = []
-    for i in range(groups_header):
-        v = int(stego[int(indices[i])]) & ((1 << k) - 1)
-        for t in range(k - 1, -1, -1):
-            bits.append((v >> t) & 1)
-    C_hdr = np.array(bits[:header_bits], dtype=np.uint8)
-    K_hdr = keystream_bits(key, len(C_hdr))
-    M_hdr = C_hdr ^ K_hdr
-    header_bytes = np.packbits(M_hdr).tobytes()
-    hdr = parse_header(header_bytes)
-    total_bytes = 16 + hdr.length
-    total_bits = total_bytes * 8
-    groups_total = (total_bits + k - 1) // k
-    bits = []
-    for i in range(groups_total):
-        v = int(stego[int(indices[i])]) & ((1 << k) - 1)
-        for t in range(k - 1, -1, -1):
-            bits.append((v >> t) & 1)
-    C_all = np.array(bits[:total_bits], dtype=np.uint8)
-    K_all = keystream_bits(key, len(C_all))
-    M_all = C_all ^ K_all
-    all_bytes = np.packbits(M_all).tobytes()
-    length = _struct.unpack("<I", all_bytes[4:8])[0]
-    sha8 = all_bytes[8:16]
-    payload = all_bytes[16:16 + length]
-    if hashlib.sha256(payload).digest()[:8] != sha8:
-        raise ValueError("Checksum mismatch")
-    return payload
+# =====================================
+# ===== LINEAR INDEXING FROM (x,y) =====
+# =====================================
 
 def _linear_indices_from_xy(shape: tuple, start_x: int, start_y: int) -> np.ndarray:
     # Gray Scale (H, W)
@@ -156,7 +102,7 @@ def _linear_indices_from_xy(shape: tuple, start_x: int, start_y: int) -> np.ndar
     else:
         raise ValueError(f"Unsupported image shape: {shape}")
 
-    # Check if its within boundary
+    # Check bounds
     if not (0 <= int(start_x) < W and 0 <= int(start_y) < H):
         raise ValueError(f"start_x/start_y out of bounds for image {W}x{H}")
 
@@ -169,40 +115,154 @@ def _linear_indices_from_xy(shape: tuple, start_x: int, start_y: int) -> np.ndar
         idx = np.concatenate([idx[start_idx:], idx[:start_idx]])
     return idx
 
+def _indices_excluding_alpha(shape: tuple, indices: np.ndarray) -> np.ndarray:
+    # If RGBA, skip alpha channel (index % 4 == 3)
+    if len(shape) == 3 and shape[2] == 4:
+        return indices[indices % 4 != 3]
+    return indices
+
+def _write_bits_lsb_at_indices(target: np.ndarray, bits: np.ndarray, k: int, indices: np.ndarray) -> None:
+    pad = (-len(bits)) % k
+    if pad:
+        bits = np.concatenate([bits, np.zeros(pad, dtype=np.uint8)])
+    groups = bits.reshape(-1, k)
+    if groups.shape[0] > len(indices):
+        raise ValueError("Not enough indices to embed bits")
+    mask = ~((1 << k) - 1)
+    for i, grp in enumerate(groups):
+        v = 0
+        for b in grp:
+            v = (v << 1) | int(b)
+        j = int(indices[i])
+        target[j] = (int(target[j]) & mask) | v
+
+def _read_bits_lsb_at_indices(source: np.ndarray, k: int, n_bits: int, indices: np.ndarray) -> np.ndarray:
+    groups = (n_bits + k - 1) // k
+    if groups > len(indices):
+        raise ValueError("Not enough indices to read bits")
+    out = []
+    for i in range(groups):
+        v = int(source[int(indices[i])]) & ((1 << k) - 1)
+        for t in range(k - 1, -1, -1):
+            out.append((v >> t) & 1)
+    return np.array(out[:n_bits], dtype=np.uint8)
+
+# =====================================
+# ====== COMPLEXITY-BASED START XY =====
+# =====================================
+
+def _sobel_magnitude(gray_uint8: np.ndarray) -> np.ndarray:
+    g = gray_uint8.astype(np.float32)
+    kx = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], dtype=np.float32)
+    ky = np.array([[-1,-2,-1],[0,0,0],[1,2,1]], dtype=np.float32)
+    gpad = np.pad(g, 1, mode='reflect')
+    Gx = (kx[0,0]*gpad[:-2,:-2] + kx[0,1]*gpad[:-2,1:-1] + kx[0,2]*gpad[:-2,2:] +
+          kx[1,0]*gpad[1:-1,:-2] + kx[1,1]*gpad[1:-1,1:-1] + kx[1,2]*gpad[1:-1,2:] +
+          kx[2,0]*gpad[2:,  :-2] + kx[2,1]*gpad[2:,  1:-1] + kx[2,2]*gpad[2:,  2:])
+    Gy = (ky[0,0]*gpad[:-2,:-2] + ky[0,1]*gpad[:-2,1:-1] + ky[0,2]*gpad[:-2,2:] +
+          ky[1,0]*gpad[1:-1,:-2] + ky[1,1]*gpad[1:-1,1:-1] + ky[1,2]*gpad[1:-1,2:] +
+          ky[2,0]*gpad[2:,  :-2] + ky[2,1]*gpad[2:,  1:-1] + ky[2,2]*gpad[2:,  2:])
+    return np.hypot(Gx, Gy)
+
+def _auto_start_xy(image_bytes: bytes, mode: str, key: str, top_percent: float = 0.5) -> tuple[int, int]:
+    """
+    Pick a high-complexity pixel using Sobel magnitude. To keep it stable yet keyed:
+    - Take the top `top_percent`% magnitudes
+    - Choose index = sha256(key|H|W|C) mod count
+    """
+    im = Image.open(io.BytesIO(image_bytes)).convert(mode)
+    arr = np.array(im, dtype=np.uint8)
+    if arr.ndim == 3:
+        # luminance-ish grayscale
+        gray = (0.299*arr[...,0] + 0.587*arr[...,1] + 0.114*arr[...,2]).astype(np.uint8)
+    else:
+        gray = arr
+
+    mag = _sobel_magnitude(gray)
+    H, W = mag.shape
+    n = H * W
+    k = max(1, int(n * (top_percent / 100.0)))
+    flat_idx = np.argpartition(mag.ravel(), -k)[-k:]
+    # deterministic selection by key hash
+    HWC = (H, W, (arr.shape[2] if arr.ndim == 3 else 1))
+    seed_material = f"{key}|{HWC[0]}|{HWC[1]}|{HWC[2]}".encode()
+    pick = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], 'little') % flat_idx.size
+    chosen = int(flat_idx[pick])
+    y = chosen // W
+    x = chosen % W
+    return x, y
+
+# =====================================
+# ======= EMBED / EXTRACT (IMAGE) =====
+# =====================================
 
 def embed_xor_lsb_from_xy(cover_flat: np.ndarray, shape: tuple,
                           payload: bytes, k: int, key: str,
                           start_x: int, start_y: int) -> np.ndarray:
     """
-    Embed starting at (x,y) and then continue sequentially (wrap-around).
-    Reuses your indices-based embed so all keystream/header logic stays the same.
+    Writes STG2 header @ (0,0), then writes payload starting at (start_x, start_y)
+    (wrapping), skipping alpha channel positions.
     """
-    indices = _linear_indices_from_xy(shape, start_x, start_y)
-    if len(shape) == 3 and shape[2] == 4:
-        indices = indices[indices % 4 != 3]
-    # This will raise ValueError if capacity is insufficient
-    return embed_xor_lsb_at_indices(cover_flat, payload, k=k, key=key, indices=indices)
+    out = cover_flat.copy()
 
+    # 1) HEADER @ (0,0)
+    hdr_bytes = make_header(payload, start_x=start_x, start_y=start_y)
+    H_bits = np.unpackbits(np.frombuffer(hdr_bytes, dtype=np.uint8))
+    K_hdr  = keystream_bits(key, len(H_bits))
+    C_hdr  = H_bits ^ K_hdr
 
-def extract_xor_lsb_from_xy(stego_flat: np.ndarray, shape: tuple,
-                            k: int, key: str,
-                            start_x: int, start_y: int) -> bytes:
+    idx_hdr = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, 0, 0))
+    _write_bits_lsb_at_indices(out, C_hdr, k, idx_hdr)
+
+    # 2) PAYLOAD @ (start_x, start_y)
+    P_bits = np.unpackbits(np.frombuffer(payload, dtype=np.uint8))
+    K_pay  = keystream_bits(key, len(P_bits))
+    C_pay  = P_bits ^ K_pay
+
+    idx_pay = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, start_x, start_y))
+
+    # Avoid overlap if start is (0,0): skip header groups
+    header_groups = (IMG_HDR_V2_SIZE * 8 + k - 1) // k
+    if start_x == 0 and start_y == 0:
+        idx_pay = idx_pay[header_groups:]
+
+    _write_bits_lsb_at_indices(out, C_pay, k, idx_pay)
+    return out
+
+def embed_xor_lsb_auto(cover_bytes: bytes, cover_flat: np.ndarray, shape: tuple,
+                       payload: bytes, k: int, key: str, mode: str) -> np.ndarray:
+    sx, sy = _auto_start_xy(cover_bytes, mode=mode, key=key, top_percent=0.5)
+    return embed_xor_lsb_from_xy(cover_flat, shape, payload, k, key, sx, sy)
+
+def extract_xor_lsb_auto(stego_flat: np.ndarray, shape: tuple, k: int, key: str) -> bytes:
     """
-    Extract assuming the payload was embedded starting at (x,y) with the function above.
+    Read STG2 header at (0,0) to get length + (start_x, start_y), then read payload from there.
     """
-    indices = _linear_indices_from_xy(shape, start_x, start_y)
-    return extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=indices)
+    # 1) header from (0,0)
+    idx_hdr = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, 0, 0))
+    C_hdr   = _read_bits_lsb_at_indices(stego_flat, k, IMG_HDR_V2_SIZE * 8, idx_hdr)
+    K_hdr   = keystream_bits(key, len(C_hdr))
+    M_hdr   = C_hdr ^ K_hdr
+    hdr_bytes = np.packbits(M_hdr).tobytes()
+    hdr = parse_header(hdr_bytes)
 
+    # 2) payload from (start_x,start_y)
+    total_bits = hdr.length * 8
+    idx_pay = _indices_excluding_alpha(shape, _linear_indices_from_xy(shape, hdr.start_x, hdr.start_y))
 
-def build_img_key(user_key: str, lsb: int, start_x, start_y) -> str:
-    # Normalize and delimit to avoid collisions
-    parts = [                      # version tag for future changes
-        f"{user_key}",
-        f"{int(lsb)}",
-        f"x:{(int(start_x) if start_x is not None else 'NA')}",
-        f"y:{(int(start_y) if start_y is not None else 'NA')}",
-    ]
-    return "".join(parts)
+    # If payload started at (0,0), skip the header region
+    header_groups = (IMG_HDR_V2_SIZE * 8 + k - 1) // k
+    if hdr.start_x == 0 and hdr.start_y == 0:
+        idx_pay = idx_pay[header_groups:]
+
+    C_pay = _read_bits_lsb_at_indices(stego_flat, k, total_bits, idx_pay)
+    K_pay = keystream_bits(key, len(C_pay))
+    M_pay = C_pay ^ K_pay
+    payload = np.packbits(M_pay).tobytes()
+
+    if hashlib.sha256(payload).digest()[:8] != hdr.sha8:
+        raise ValueError("Checksum mismatch")
+    return payload
 
 # Run immediately
 
@@ -239,29 +299,29 @@ def build_img_key(user_key: str, lsb: int, start_x, start_y) -> str:
 # recovered = extract_xor_lsb_at_indices(stego_flat, k=k, key=key, indices=eligible)
 # print("Payload match?", recovered == payload_bytes)
 
-# Pixel Intensity Plot
+# # Pixel Intensity Plot
 # cover_path = "test/img_rgb_100x100_RGB.png"
 # stego_out_path = "stego_rgb_100x100.png"
 
-## Convert to grayscale
+# # Convert to grayscale
 # cover_img = Image.open(cover_path).convert("L")  
 # stego_img = Image.open(stego_out_path).convert("L")
 
-## Convert to NumPy arrays
+# # Convert to NumPy arrays
 # cover_arr = np.array(cover_img).ravel()
 # stego_arr = np.array(stego_img).ravel()
 
-# # Plot histograms
+# # # Plot histograms
 # plt.figure(figsize=(12, 5))
 
-## 8-bit grayscale image, each pixel intensity is an integer in the range 0–255.
+# # 8-bit grayscale image, each pixel intensity is an integer in the range 0–255.
 # plt.subplot(1, 2, 1)
 # plt.hist(cover_arr, bins=256, range=(0, 255), color="blue", alpha=0.7)
 # plt.title("Histogram of Cover Image")
 # plt.xlabel("Pixel Intensity")
 # plt.ylabel("Number of Pixels")
 
-## For Steg image
+# # For Steg image
 # plt.subplot(1, 2, 2)
 # plt.hist(stego_arr, bins=256, range=(0, 255), color="green", alpha=0.7)
 # plt.title("Histogram of Stego Image")
@@ -305,7 +365,7 @@ for i, name in enumerate(["Red", "Green", "Blue"]):
     ax.legend()
 
 plt.tight_layout()
-#plt.show()
+plt.show()
 
 def make_audio_header(payload: bytes, start_sample: int, use_complex: bool) -> bytes:
     sha8 = hashlib.sha256(payload).digest()[:8]
