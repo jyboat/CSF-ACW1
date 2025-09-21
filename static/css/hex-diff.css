@@ -1,0 +1,74 @@
+#hex-diff-card .hex-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  height: 420px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  overflow: hidden;         
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+#hex-diff-card .pane {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-right: 1px solid #dee2e6;
+  min-height: 0;              
+}
+#hex-diff-card .pane:last-child { border-right: none; }
+
+#hex-diff-card .hex {
+  overflow: auto;             
+  white-space: pre;
+  min-height: 0;              
+  scrollbar-gutter: stable;   
+}
+
+#hex-diff-card .hex::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+#hex-diff-card .hex::-webkit-scrollbar-track {
+  background: #f1f3f5;
+}
+#hex-diff-card .hex::-webkit-scrollbar-thumb {
+  background: #ced4da;
+  border-radius: 6px;
+}
+#hex-diff-card .hex::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
+}
+
+#hex-diff-card .row {
+  display: grid;
+  grid-template-columns: 100px 1fr 20px 240px;
+  gap: 10px;
+  padding: 2px 12px;
+  border-bottom: 1px solid #f1f3f5;
+  box-sizing: border-box;
+}
+#hex-diff-card .addr {
+  color: #6c757d;
+  padding-left: 6px;           
+  font-feature-settings: "tnum" 1, "lnum" 1; 
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+#hex-diff-card .bytes { display: grid; grid-template-columns: repeat(16, 1fr); gap: 6px; }
+#hex-diff-card .ascii { color: #495057; }
+#hex-diff-card .mid { color: #adb5bd; }
+
+#hex-diff-card .byte { padding: 0 2px; border-radius: 4px; }
+#hex-diff-card .byte.diff { background: rgba(255,71,87,.25); outline: 1px solid rgba(255,71,87,.45); }
+#hex-diff-card .byte.ins  { background: rgba(46,213,115,.22); outline: 1px solid rgba(46,213,115,.45); }
+#hex-diff-card .byte.del  { background: rgba(255,165,2,.22); outline: 1px solid rgba(255,165,2,.45); }
+
+#hex-diff-card .hex.only-diffs .row.same-row { display: none; }
+
+#hex-diff-card .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+#hex-diff-card .dot.diff { background: #ff4757; }
+#hex-diff-card .dot.ins  { background: #2ed573; }
+#hex-diff-card .dot.del  { background: #ffa502; }
