@@ -335,6 +335,7 @@ $(document).ready(function () {
         const fd = new FormData();
         fd.append("coverFile", coverFile);
         fd.append("lsbCount", String(lsbCount));
+        console.log(lsbCount)
 
         fetch("/api/check-capacity", { method: "POST", body: fd })
             .then(res => res.json().then(data => ({ ok: res.ok, data })))
@@ -381,4 +382,12 @@ $(document).ready(function () {
                     .addClass("text-danger");
             }
         }
+
+    function invalidateCapacity() {
+        lastCapacityBytes = null;
+        checkCapacity();
+    }
+
+    $lsbCount.on("change", invalidateCapacity);
+    $fileInput.on("change", invalidateCapacity);
 });
