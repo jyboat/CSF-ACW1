@@ -153,8 +153,13 @@
         <a href="/" class="btn btn-secondary">Back to Home</a>
         <a href="static/dummy/diff_map.png" class="btn btn-success" download>Download Visualisation</a>
         {% if media_type == "img" %}
-        <a href="{{ url_for('download_bundle') }}" class="btn btn-primary">
-            Download Stego Image and Key
+        <a href="{{ url_for('static', filename=stego_filepath) }}" class="btn btn-primary" download>
+            Download Image
+        </a>
+        {% endif %}
+        {% if media_type == "audio" %}
+        <a href="{{ url_for('static', filename=stego_audiopath) }}" class="btn btn-primary" download>
+          Download Audio
         </a>
         {% endif %}
     </div>

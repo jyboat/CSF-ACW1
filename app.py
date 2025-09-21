@@ -408,11 +408,8 @@ def embed_media():
 
             stego_png = flat_to_image(stego_flat, shape, mode=mode)
 
-            # Best-effort session save; don't fail the request if it can't be saved.
-            try:
-                save_images_to_session(cover_bytes, stego_png)
-            except Exception:
-                pass
+
+            save_images_to_session(cover_bytes, stego_png)
 
             # Build ZIP in memory
             # zip_buf = io.BytesIO()
@@ -459,10 +456,7 @@ def embed_media():
                 use_complex=use_complex
             )
 
-            try:
-                save_audio_to_session(cover_bytes, stego_wav)
-            except Exception:
-                pass
+            save_audio_to_session(cover_bytes, stego_wav)
 
             return redirect(url_for("results"))
 
