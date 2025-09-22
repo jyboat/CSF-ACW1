@@ -1,6 +1,6 @@
 from flask_toastr import Toastr
 from flask import (
-    Flask, request, render_template, redirect, url_for,
+    Flask, render_template, request, redirect, url_for,
     flash, send_file, jsonify, session
 )
 from typing import Any
@@ -44,6 +44,9 @@ from lsb_xor_algorithm import (
     extract_xor_lsb_auto,               
     embed_xor_lsb_audio, extract_xor_lsb_audio
 )
+
+# data comparison helpers
+from data_comparison import compute_pixel_diff, save_rgb_analysis_to_session, save_audio_analysis_to_session
 
 # ------------------------------------------------------
 
@@ -226,7 +229,6 @@ def results():
 
         save_gray_analysis_to_session(cover_filepath, stego_filepath)
         gray_analysis = session.get("gray_analysis_filepath")
-
         return render_template(
             "results.html",
             media_type=media_type,
@@ -246,7 +248,10 @@ def results():
         cover_audiopath = cover_filepath
         stego_audiopath = stego_filepath
 
+        # Save AUDIO analysis
         save_audio_analysis_to_session(cover_filepath, stego_filepath)
+        cover_audiopath = session.get("cover_audio")
+        stego_audiopath = session.get("stego_audio")
         audio_analysis = session.get("audio_analysis_filepath")
 
         return render_template(
@@ -551,6 +556,37 @@ def download_bundle():
         as_attachment=True,
         download_name=os.path.basename(bundle_path),
     )
+
+@app.route("/hexcompare")
+def hexcompare():
+    cover_filepath = session.get("cover")
+    stego_filepath = session.get("stego")
+    cover_audiopath = session.get("cover_audio")
+    stego_audiopath = session.get("stego_audio")
+
+    if (cover_filepath and stego_filepath and
+        cover_filepath.lower().endswith(".png") and stego_filepath.lower().endswith(".png")):
+        media_type = "img"
+        return render_template(
+            "hexcompare.html",
+            media_type=media_type,
+            cover_filepath=cover_filepath,
+            stego_filepath=stego_filepath,
+        )
+
+    elif (cover_audiopath and stego_audiopath and
+          cover_audiopath.lower().endswith(".wav") and stego_audiopath.lower().endswith(".wav")):
+        media_type = "audio"
+        return render_template(
+            "hexcompare.html",
+            media_type=media_type,
+            cover_audiopath=cover_audiopath,
+            stego_audiopath=stego_audiopath,
+        )
+
+    else:
+        flash("No current files found. Please embed again.", "error")
+        return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.debug = True

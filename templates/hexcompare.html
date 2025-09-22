@@ -1,0 +1,63 @@
+{% extends 'layouts/base.html' %}
+{% block body %}
+
+<section class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h2 class="mb-0">Hexadecimal Diff</h2>
+    <a href="{{ url_for('results') }}" class="btn btn-outline-secondary btn-sm">← Back to results</a>
+  </div>
+  <hr>
+{# === Hexadecimal Diff (Cover ⟷ Stego) === #}
+{% set left_url  = None %}
+{% set right_url = None %}
+{% if media_type == "img" and cover_filepath and stego_filepath %}
+  {% set left_url  = url_for('static', filename=cover_filepath) %}
+  {% set right_url = url_for('static', filename=stego_filepath) %}
+{% elif media_type == "audio" and cover_audiopath and stego_audiopath %}
+  {% set left_url  = url_for('static', filename=cover_audiopath) %}
+  {% set right_url = url_for('static', filename=stego_audiopath) %}
+{% endif %}
+
+<div id="hex-sources" data-left="{{ left_url or '' }}" data-right="{{ right_url or '' }}"></div>
+
+<div class="card mb-4" id="hex-diff-card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><strong>Hexadecimal Diff</strong> <small class="text-muted">(Cover vs Stego)</small></span>
+    <div class="d-flex gap-3 small text-muted">
+      <span><span class="dot diff"></span>diff</span>
+      <span><span class="dot ins"></span>insert (only stego)</span>
+      <span><span class="dot del"></span>delete (only cover)</span>
+    </div>
+  </div>
+  <div class="card-body p-2">
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox" id="hexOnlyDiffs">
+      <label class="form-check-label" for="hexOnlyDiffs">Show only rows with diffs</label>
+    </div>
+
+    <div class="hex-grid">
+      <section class="pane">
+        <div class="pane-header bg-light border-bottom px-2 py-1">
+          <div class="meta" id="hexMetaLeft">Cover</div>
+        </div>
+        <div class="hex" id="hexLeft" aria-label="Left hex view"></div>
+      </section>
+
+      <section class="pane">
+        <div class="pane-header bg-light border-bottom px-2 py-1">
+          <div class="meta" id="hexMetaRight">Stego</div>
+        </div>
+        <div class="hex" id="hexRight" aria-label="Right hex view"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Hex Diff styles + scripts -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/hex-diff.css') }}">
+<script src="{{ url_for('static', filename='js/hex-diff.js') }}"></script>
+<script>initHexDiff();</script>
+
+</section>
+
+{% endblock %}

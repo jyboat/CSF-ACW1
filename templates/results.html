@@ -18,35 +18,17 @@
 
 <div id="hex-sources" data-left="{{ left_url or '' }}" data-right="{{ right_url or '' }}"></div>
 
-<div class="card mb-4" id="hex-diff-card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span><strong>Hexadecimal Diff</strong> <small class="text-muted">(Cover vs Stego)</small></span>
-    <div class="d-flex gap-3 small text-muted">
-      <span><span class="dot diff"></span>diff</span>
-      <span><span class="dot ins"></span>insert (only stego)</span>
-      <span><span class="dot del"></span>delete (only cover)</span>
+<div class="card mb-4" id="hex-diff-launch">
+  <div class="card-body d-flex justify-content-between align-items-center">
+    <div>
+      <strong>Hexadecimal Diff</strong> <small class="text-muted">(Cover vs Stego)</small>
+      <div class="small text-muted">Open in a dedicated page to avoid freezing on large files.</div>
     </div>
-  </div>
-  <div class="card-body p-2">
-    <div class="form-check mb-2">
-      <input class="form-check-input" type="checkbox" id="hexOnlyDiffs">
-      <label class="form-check-label" for="hexOnlyDiffs">Show only rows with diffs</label>
-    </div>
-
-    <div class="hex-grid">
-      <section class="pane">
-        <div class="pane-header bg-light border-bottom px-2 py-1">
-          <div class="meta" id="hexMetaLeft">Cover</div>
-        </div>
-        <div class="hex" id="hexLeft" aria-label="Left hex view"></div>
-      </section>
-      <section class="pane">
-        <div class="pane-header bg-light border-bottom px-2 py-1">
-          <div class="meta" id="hexMetaRight">Stego</div>
-        </div>
-        <div class="hex" id="hexRight" aria-label="Right hex view"></div>
-      </section>
-    </div>
+    {% if left_url and right_url %}
+      <a href="{{ url_for('hexcompare') }}" target="_blank" rel="noopener noreferrer"   class="btn btn-primary">Open Hex Compare</a>
+    {% else %}
+      <button class="btn btn-primary" disabled>Not available</button>
+    {% endif %}
   </div>
 </div>
 
