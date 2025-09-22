@@ -140,3 +140,22 @@ def compute_capacity_bytes_image(meta: CoverMetaImage, lsb_count: int) -> int:
     if lsb_count < 1 or lsb_count > 8:
         return 0
     return (meta.width * meta.height * meta.channels * lsb_count) // 8
+
+def is_mp4_extension(filename: str) -> bool:
+    return filename.lower().endswith(".mp4")
+
+def load_mp4_meta(path_or_bytes) -> dict:
+    """
+    Minimal MP4 metadata for capacity. We treat capacity as file_size // 8.
+    (i.e., we allow hiding ~12.5% of file size as payload in a custom box).
+    """
+    if isinstance(path_or_bytes, (bytes, bytearray)):
+        size = len(path_or_bytes)
+    else:
+        size = os.path.getsize(path_or_bytes)
+    return {"path": "<bytes>" if isinstance(path_or_bytes, (bytes, bytearray)) else str(path_or_bytes),
+            "size": size}
+
+def compute_capacity_bytes_mp4(meta: dict, lsb_count: int = 1) -> int:
+    # Reserve 1/8th of MP4 size to be safe
+    return meta["size"] // 8

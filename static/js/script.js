@@ -78,8 +78,16 @@ $(document).ready(function () {
             });
             const audioUrl = URL.createObjectURL(file);
             wavesurfer.load(audioUrl);
+        } else if (fileType.startsWith("video/") || file.name.endsWith(".mp4")) {
+            $noFileText.hide();
+            setBoxHeight(defaultBoxHeight);
+            const video = document.createElement("video");
+            video.controls = true;
+            video.src = URL.createObjectURL(file);
+            video.style.maxWidth = "100%";
+            $waveform.removeClass("d-none").append(video);
         }
-
+        
         $fileActions.removeClass("d-none");
         checkCapacity();
     });
@@ -112,7 +120,7 @@ $(document).ready(function () {
         checkCapacity();
     });
 
-    $("#skipBtn").on("click", function() {
+    $("#skipBtn").on("click", function () {
         $("#useComplex").val("1");
         $("#startSample").val("");
         $("startX").val("");
@@ -130,7 +138,7 @@ $(document).ready(function () {
         }
 
         const noKey = $stegoKey.val().trim() == "";
-        if (noKey){
+        if (noKey) {
             toastr.error("Please enter a key to proceed");
             return;
         }
@@ -203,20 +211,20 @@ $(document).ready(function () {
     });
 
     // Drag and drop stuff
-    $previewBox.on("dragover dragenter", function(e) {
+    $previewBox.on("dragover dragenter", function (e) {
         e.preventDefault();
         e.stopPropagation();
         $previewBox.css("background-color", "#f3e8ff");
     });
 
-    $previewBox.on("dragleave dragend drop", function(e) {
+    $previewBox.on("dragleave dragend drop", function (e) {
         e.preventDefault();
         e.stopPropagation();
         $previewBox.css("background-color", "");
     });
 
     // Handle file drop
-    $previewBox.on("drop", function(e) {
+    $previewBox.on("drop", function (e) {
         e.preventDefault();
         e.stopPropagation();
         $previewBox.removeClass("drag-over"); // remove highlight
@@ -370,24 +378,24 @@ $(document).ready(function () {
                 lastCheckOk = false;
                 console.error(err);
             });
-           }
+    }
 
-        // Helper function to update capacity info text
-        function updateCapacityText(capacityBytes, payloadBytes, ok) {
-            const capBits = capacityBytes * 8;
-            const payBits = payloadBytes * 8;
-            if (ok) {
-                $capacityInfo
-                    .text(`Sufficient: Cover capacity ${capBits} bits (${capacityBytes} bytes), Payload requires ${payBits} bits (${payloadBytes} bytes).`)
-                    .removeClass("text-danger")
-                    .addClass("text-success");
-            } else {
-                $capacityInfo
-                    .text(`Insufficient: Cover capacity ${capBits} bits (${capacityBytes} bytes), Payload requires ${payBits} bits (${payloadBytes} bytes). Please reduce payload size, or increase LSBs.`)
-                    .removeClass("text-success")
-                    .addClass("text-danger");
-            }
+    // Helper function to update capacity info text
+    function updateCapacityText(capacityBytes, payloadBytes, ok) {
+        const capBits = capacityBytes * 8;
+        const payBits = payloadBytes * 8;
+        if (ok) {
+            $capacityInfo
+                .text(`Sufficient: Cover capacity ${capBits} bits (${capacityBytes} bytes), Payload requires ${payBits} bits (${payloadBytes} bytes).`)
+                .removeClass("text-danger")
+                .addClass("text-success");
+        } else {
+            $capacityInfo
+                .text(`Insufficient: Cover capacity ${capBits} bits (${capacityBytes} bytes), Payload requires ${payBits} bits (${payloadBytes} bytes). Please reduce payload size, or increase LSBs.`)
+                .removeClass("text-success")
+                .addClass("text-danger");
         }
+    }
 
     function invalidateCapacity() {
         lastCapacityBytes = null;

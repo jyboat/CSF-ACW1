@@ -66,9 +66,33 @@
 #hex-diff-card .byte.ins  { background: rgba(46,213,115,.22); outline: 1px solid rgba(46,213,115,.45); }
 #hex-diff-card .byte.del  { background: rgba(255,165,2,.22); outline: 1px solid rgba(255,165,2,.45); }
 
-#hex-diff-card .hex.only-diffs .row.same-row { display: none; }
+/* Hide identical rows when "Show only rows with diffs" is checked */
+.hex.only-diffs .same-row {
+  display: none;
+}
+
+.same-row .byte {
+  opacity: 0.6;
+}
 
 #hex-diff-card .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
 #hex-diff-card .dot.diff { background: #ff4757; }
 #hex-diff-card .dot.ins  { background: #2ed573; }
 #hex-diff-card .dot.del  { background: #ffa502; }
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.85);
+  z-index: 2000;
+}
+.loading-overlay.hidden {
+  display: none;
+}

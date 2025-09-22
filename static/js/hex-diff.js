@@ -1,187 +1,246 @@
-function initHexDiff() {
-  const src = document.getElementById("hex-sources");
-  if (!src) return;
+let left = null;
+let right = null;
 
-  const leftURL = src.dataset.left;
-  const rightURL = src.dataset.right;
-  if (!leftURL || !rightURL) return;
+const PER_ROW = 16;
+const ROW_HEIGHT = 20; // px — adjust if your CSS row height differs
+const BUFFER_ROWS = 150; // how many rows to render at once
+
+function initHexDiff() {
+  const sources = document.getElementById("hex-sources");
+  left = sources.dataset.left;
+  right = sources.dataset.right;
+
+  if (!left || !right) {
+    console.error("HexDiff: missing file URLs", left, right);
+    return;
+  }
 
   const hexL = document.getElementById("hexLeft");
   const hexR = document.getElementById("hexRight");
   const metaL = document.getElementById("hexMetaLeft");
   const metaR = document.getElementById("hexMetaRight");
   const onlyDiffs = document.getElementById("hexOnlyDiffs");
+  const progressBar = document.getElementById("hexProgressBar");
 
   const printable = (n) =>
     n >= 0x20 && n <= 0x7e ? String.fromCharCode(n) : ".";
-
   const h2 = (n) => n.toString(16).padStart(2, "0").toUpperCase();
   const h8 = (n) => n.toString(16).padStart(8, "0").toUpperCase();
 
-  function fetchBytes(url) {
-    return fetch(url).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b));
-  }
+  async function fetchBytesWithProgress(url) {
+    const response = await fetch(url);
+    const reader = response.body.getReader();
+    const contentLength = +response.headers.get("Content-Length");
 
-  // Render one pane (address | bytes | '|' | ascii)
-  function render(container, meta, name, bytes) {
-    container.innerHTML = "";
-    meta.textContent = `${name} — ${bytes.length.toLocaleString()} bytes`;
-    const frag = document.createDocumentFragment();
-    const perRow = 16;
-    const rows = Math.ceil(bytes.length / perRow) || 1;
+    let receivedLength = 0;
+    let chunks = [];
 
-    for (let row = 0; row < rows; row++) {
-      const off = row * perRow;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      const rowEl = document.createElement("div");
-      rowEl.className = "row";
+      chunks.push(value);
+      receivedLength += value.length;
 
-      const addr = document.createElement("div");
-      addr.className = "addr";
-      addr.textContent = h8(off);
-
-      const bytesEl = document.createElement("div");
-      bytesEl.className = "bytes";
-
-      const mid = document.createElement("div");
-      mid.className = "mid";
-      mid.textContent = "|";
-
-      const ascii = document.createElement("div");
-      ascii.className = "ascii";
-
-      // Build both HEX and ASCII with one <span.byte> per position
-      for (let i = 0; i < perRow; i++) {
-        const idx = off + i;
-        const b = idx < bytes.length ? bytes[idx] : null;
-
-        // hex cell
-        const hexSpan = document.createElement("span");
-        hexSpan.className = "byte";
-        hexSpan.dataset.index = idx;
-        hexSpan.textContent = b === null ? "  " : h2(b);
-        bytesEl.appendChild(hexSpan);
-
-        // ascii cell
-        const asciiSpan = document.createElement("span");
-        asciiSpan.className = "byte";
-        asciiSpan.dataset.index = idx;
-        asciiSpan.textContent = b === null ? " " : printable(b);
-        ascii.appendChild(asciiSpan);
+      if (contentLength) {
+        const percent = Math.round((receivedLength / contentLength) * 100);
+        progressBar.style.width = percent + "%";
+        progressBar.textContent = percent + "%";
       }
-
-      rowEl.append(addr, bytesEl, mid, ascii);
-      frag.appendChild(rowEl);
     }
 
-    container.appendChild(frag);
+    let merged = new Uint8Array(receivedLength);
+    let pos = 0;
+    for (let chunk of chunks) {
+      merged.set(chunk, pos);
+      pos += chunk.length;
+    }
+
+    return merged;
   }
 
-  function compare(a, b) {
-    const perRow = 16;
-    const maxLen = Math.max(a.length, b.length);
-    const rows = Math.ceil(maxLen / perRow) || 1;
+  function buildRow(rowIdx, A, B) {
+    const off = rowIdx * PER_ROW;
 
-    const L = hexL.querySelectorAll(".bytes .byte");
-    const R = hexR.querySelectorAll(".bytes .byte");
+    const rowL = document.createElement("div");
+    rowL.className = "row";
+    rowL.style.top = `${rowIdx * ROW_HEIGHT}px`;
+    rowL.style.position = "absolute";
 
-    const rowDiffL = new Set();
-    const rowDiffR = new Set();
+    const rowR = rowL.cloneNode(false);
 
-    for (let i = 0; i < rows * perRow; i++) {
-      const av = i < a.length ? a[i] : null;
-      const bv = i < b.length ? b[i] : null;
+    const addrL = document.createElement("div");
+    addrL.className = "addr";
+    addrL.textContent = h8(off);
+    const addrR = addrL.cloneNode(true);
 
-      const lHex = L[i];
-      const rHex = R[i];
+    const bytesL = document.createElement("div");
+    bytesL.className = "bytes";
+    const midL = document.createElement("div");
+    midL.className = "mid";
+    midL.textContent = "|";
+    const asciiL = document.createElement("div");
+    asciiL.className = "ascii";
 
-      if (av === null && bv === null) continue;
+    const bytesR = document.createElement("div");
+    bytesR.className = "bytes";
+    const midR = document.createElement("div");
+    midR.className = "mid";
+    midR.textContent = "|";
+    const asciiR = document.createElement("div");
+    asciiR.className = "ascii";
 
-      const rowIndex = Math.floor(i / perRow);
+    let rowHasDiff = false;
+
+    for (let i = 0; i < PER_ROW; i++) {
+      const idx = off + i;
+
+      const av = idx < A.length ? A[idx] : null;
+      const bv = idx < B.length ? B[idx] : null;
+
+      const lHex = document.createElement("span");
+      lHex.className = "byte";
+      lHex.textContent = av === null ? "  " : h2(av);
+
+      const lAsc = document.createElement("span");
+      lAsc.className = "byte";
+      lAsc.textContent = av === null ? " " : printable(av);
+
+      const rHex = document.createElement("span");
+      rHex.className = "byte";
+      rHex.textContent = bv === null ? "  " : h2(bv);
+
+      const rAsc = document.createElement("span");
+      rAsc.className = "byte";
+      rAsc.textContent = bv === null ? " " : printable(bv);
 
       if (av === null && bv !== null) {
-        if (rHex) rHex.className = "byte ins";
-        markAscii(hexR, i, printable(bv), "ins");
-        rowDiffR.add(rowIndex);
+        rHex.className = "byte ins"; rAsc.className = "byte ins";
+        rowHasDiff = true;
       } else if (av !== null && bv === null) {
-        if (lHex) lHex.className = "byte del";
-        markAscii(hexL, i, printable(av), "del");
-        rowDiffL.add(rowIndex);
+        lHex.className = "byte del"; lAsc.className = "byte del";
+        rowHasDiff = true;
       } else if (av !== bv) {
-        if (lHex) lHex.className = "byte diff";
-        if (rHex) rHex.className = "byte diff";
-        markAscii(hexL, i, printable(av), "diff");
-        markAscii(hexR, i, printable(bv), "diff");
-        rowDiffL.add(rowIndex);
-        rowDiffR.add(rowIndex);
+        lHex.className = "byte diff"; rHex.className = "byte diff";
+        lAsc.className = "byte diff"; rAsc.className = "byte diff";
+        rowHasDiff = true;
       }
+
+      bytesL.appendChild(lHex); asciiL.appendChild(lAsc);
+      bytesR.appendChild(rHex); asciiR.appendChild(rAsc);
     }
 
-    const rowsL = hexL.querySelectorAll(".row");
-    const rowsR = hexR.querySelectorAll(".row");
-    for (let r = 0; r < rows; r++) {
-      const same = !(rowDiffL.has(r) || rowDiffR.has(r));
-      if (same) {
-        rowsL[r]?.classList.add("same-row");
-        rowsR[r]?.classList.add("same-row");
+    if (!rowHasDiff) {
+      rowL.classList.add("same-row");
+      rowR.classList.add("same-row");
+    }
+
+    rowL.append(addrL, bytesL, midL, asciiL);
+    rowR.append(addrR, bytesR, midR, asciiR);
+
+    return [rowL, rowR];
+  }
+
+  function renderVirtual(A, B) {
+    const totalRows = Math.ceil(Math.max(A.length, B.length) / PER_ROW) || 1;
+
+    // precompute which rows have diffs
+    const diffRows = new Set();
+    for (let row = 0; row < totalRows; row++) {
+      const off = row * PER_ROW;
+      let hasDiff = false;
+      for (let i = 0; i < PER_ROW; i++) {
+        const idx = off + i;
+        const av = idx < A.length ? A[idx] : null;
+        const bv = idx < B.length ? B[idx] : null;
+        if (av !== bv) { hasDiff = true; break; }
       }
-    }
-  }
-
-  function markAscii(container, idx, char, kind) {
-    const perRow = 16;
-    const row = Math.floor(idx / perRow);
-    const col = idx % perRow;
-
-    const rowEl = container.querySelectorAll(".row")[row];
-    if (!rowEl) return;
-
-    const asciiSpans = rowEl.querySelectorAll(".ascii .byte");
-    const cell = asciiSpans[col];
-    if (!cell) return;
-
-    cell.className = `byte ${kind}`;
-    cell.textContent = char;
-  }
-
-  // Row-based scroll sync so panes stay aligned
-  function setupRowSync(leftEl, rightEl) {
-    let isSyncing = false;
-
-    function sync(master, other) {
-      if (isSyncing) return;
-      isSyncing = true;
-
-      const rowH = master.querySelector(".row")?.offsetHeight || 1;
-      const rowIdx = Math.round(master.scrollTop / rowH);
-
-      other.scrollTop = rowIdx * rowH;
-
-      isSyncing = false;
+      if (hasDiff) diffRows.add(row);
     }
 
-    leftEl.addEventListener("scroll", () => sync(leftEl, rightEl));
-    rightEl.addEventListener("scroll", () => sync(rightEl, leftEl));
-  }
+    // setup spacers
+    hexL.style.position = "relative";
+    hexR.style.position = "relative";
+    hexL.innerHTML = "";
+    hexR.innerHTML = "";
 
-  // Fetch both, render, then diff and wire up UI
-  Promise.all([fetchBytes(leftURL), fetchBytes(rightURL)]).then(([A, B]) => {
-    render(hexL, metaL, new URL(leftURL, location.href).pathname.split("/").pop(), A);
-    render(hexR, metaR, new URL(rightURL, location.href).pathname.split("/").pop(), B);
+    const spacerL = document.createElement("div");
+    const spacerR = document.createElement("div");
 
-    compare(A, B);
-    setupRowSync(hexL, hexR);
+    function updateSpacerHeight() {
+      const rowsToShow = onlyDiffs.checked ? diffRows.size : totalRows;
+      spacerL.style.height = `${rowsToShow * ROW_HEIGHT}px`;
+      spacerR.style.height = `${rowsToShow * ROW_HEIGHT}px`;
+    }
+    updateSpacerHeight();
 
-    // “show only rows with diffs”
+    hexL.appendChild(spacerL);
+    hexR.appendChild(spacerR);
+
+    function renderViewport() {
+      const scrollTop = hexL.scrollTop;
+      const startRow = Math.floor(scrollTop / ROW_HEIGHT);
+      const endRow = startRow + BUFFER_ROWS;
+
+      hexL.innerHTML = "";
+      hexR.innerHTML = "";
+      hexL.appendChild(spacerL);
+      hexR.appendChild(spacerR);
+
+      const fragL = document.createDocumentFragment();
+      const fragR = document.createDocumentFragment();
+
+      let rows = onlyDiffs.checked ? Array.from(diffRows) : [...Array(totalRows).keys()];
+      rows = rows.slice(startRow, endRow);
+
+      rows.forEach((row, i) => {
+        const [rowL, rowR] = buildRow(row, A, B);
+        const top = (startRow + i) * ROW_HEIGHT;
+        rowL.style.top = `${top}px`;
+        rowR.style.top = `${top}px`;
+        fragL.appendChild(rowL);
+        fragR.appendChild(rowR);
+      });
+
+      hexL.appendChild(fragL);
+      hexR.appendChild(fragR);
+    }
+
+    hexL.addEventListener("scroll", () => {
+      hexR.scrollTop = hexL.scrollTop;
+      renderViewport();
+    });
+    hexR.addEventListener("scroll", () => {
+      hexL.scrollTop = hexR.scrollTop;
+      renderViewport();
+    });
+
     if (onlyDiffs) {
       onlyDiffs.addEventListener("change", () => {
-        [hexL, hexR].forEach((h) =>
-          h.classList.toggle("only-diffs", onlyDiffs.checked)
+        updateSpacerHeight();
+        hexL.scrollTop = 0;
+        hexR.scrollTop = 0;
+        renderViewport();
+      });
+    }
+
+    renderViewport();
+  }
+
+  Promise.all([fetchBytesWithProgress(left), fetchBytesWithProgress(right)]).then(([A, B]) => {
+    metaL.textContent = `Cover — ${A.length.toLocaleString()} bytes`;
+    metaR.textContent = `Stego — ${B.length.toLocaleString()} bytes`;
+
+    renderVirtual(A, B);
+
+    document.getElementById("hexLoading").style.display = "none";
+
+    if (onlyDiffs) {
+      onlyDiffs.addEventListener("change", () => {
+        [hexL, hexR].forEach((pane) =>
+          pane.classList.toggle("only-diffs", onlyDiffs.checked)
         );
-        // re-align after filter toggles
-        requestAnimationFrame(() => {
-          hexL.scrollTop = hexL.scrollTop;
-        });
+        renderVirtual(A, B);
       });
     }
   });

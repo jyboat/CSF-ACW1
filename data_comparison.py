@@ -59,6 +59,24 @@ def save_audio_to_session(cover_bytes, stego_wav):
         print(f"Error saving images to session: {e}")
         return False
 
+def save_video_to_session(cover_bytes, stego_bytes):
+    try:
+        uid = uuid.uuid4().hex
+        cover_filename = f"static/tmp/user/video/cover_{uid}.mp4"
+        stego_filename = f"static/tmp/user/video/stego_{uid}.mp4"
+
+        with open(cover_filename, "wb") as f:
+            f.write(cover_bytes)
+        with open(stego_filename, "wb") as f:
+            f.write(stego_bytes)
+
+        session['cover'] = cover_filename.replace("static/", "")
+        session['stego'] = stego_filename.replace("static/", "")
+        return True
+    except Exception as e:
+        print(f"Error saving videos to session: {e}")
+        return False
+
 
 def compute_pixel_diff(cover_path, stego_path):
     """

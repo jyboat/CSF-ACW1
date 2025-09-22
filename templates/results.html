@@ -5,37 +5,41 @@
     <h2 class="text-center">Steganography Results & Visualisation</h2>
     <hr>
 
-{# === Hexadecimal Diff (Cover ⟷ Stego) === #}
-{% set left_url  = None %}
-{% set right_url = None %}
-{% if media_type == "img" and cover_filepath and stego_filepath %}
-  {% set left_url  = url_for('static', filename=cover_filepath) %}
-  {% set right_url = url_for('static', filename=stego_filepath) %}
-{% elif media_type == "audio" and cover_audiopath and stego_audiopath %}
-  {% set left_url  = url_for('static', filename=cover_audiopath) %}
-  {% set right_url = url_for('static', filename=stego_audiopath) %}
-{% endif %}
-
-<div id="hex-sources" data-left="{{ left_url or '' }}" data-right="{{ right_url or '' }}"></div>
-
-<div class="card mb-4" id="hex-diff-launch">
-  <div class="card-body d-flex justify-content-between align-items-center">
-    <div>
-      <strong>Hexadecimal Diff</strong> <small class="text-muted">(Cover vs Stego)</small>
-      <div class="small text-muted">Open in a dedicated page to avoid freezing on large files.</div>
-    </div>
-    {% if left_url and right_url %}
-      <a href="{{ url_for('hexcompare') }}" target="_blank" rel="noopener noreferrer"   class="btn btn-primary">Open Hex Compare</a>
-    {% else %}
-      <button class="btn btn-primary" disabled>Not available</button>
+    {# === Hexadecimal Diff (Cover ⟷ Stego) === #}
+    {% set left_url = None %}
+    {% set right_url = None %}
+    {% if media_type == "img" and cover_filepath and stego_filepath %}
+    {% set left_url = url_for('static', filename=cover_filepath) %}
+    {% set right_url = url_for('static', filename=stego_filepath) %}
+    {% elif media_type == "audio" and cover_audiopath and stego_audiopath %}
+    {% set left_url = url_for('static', filename=cover_audiopath) %}
+    {% set right_url = url_for('static', filename=stego_audiopath) %}
+    {% elif media_type == "mp4" and cover_videopath and stego_videopath %}
+    {% set left_url = url_for('static', filename=cover_videopath) %}
+    {% set right_url = url_for('static', filename=stego_videopath) %}
     {% endif %}
-  </div>
-</div>
 
-<!-- Hex Diff styles + scripts -->
-<link rel="stylesheet" href="{{ url_for('static', filename='css/hex-diff.css') }}">
-<script src="{{ url_for('static', filename='js/hex-diff.js') }}"></script>
-<script>initHexDiff();</script>
+    <div id="hex-sources" data-left="{{ left_url or '' }}" data-right="{{ right_url or '' }}"></div>
+
+    <div class="card mb-4" id="hex-diff-launch">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Hexadecimal Diff</strong> <small class="text-muted">(Cover vs Stego)</small>
+                <div class="small text-muted">Open in a dedicated page to avoid freezing on large files.</div>
+            </div>
+            {% if left_url and right_url %}
+            <a href="{{ url_for('hexcompare') }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Open
+                Hex Compare</a>
+            {% else %}
+            <button class="btn btn-primary" disabled>Not available</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Hex Diff styles + scripts -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/hex-diff.css') }}">
+    <script src="{{ url_for('static', filename='js/hex-diff.js') }}"></script>
+    <script>initHexDiff();</script>
 
     {% if media_type == "img" %}
     <!-- IMAGE DISPLAY -->
@@ -128,6 +132,23 @@
         <img src="{{ url_for('static', filename=audio_analysis_filepath) }}" class="img-preview">
     </div>
     {% endif %}
+    {# ================= VIDEO (MP4) ================= #}
+    {% elif media_type == "mp4" %}
+    {% if cover_videopath and stego_videopath %}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="section-box">
+                <h5>Original Video</h5>
+                <video src="{{ url_for('static', filename=cover_videopath) }}" controls style="max-width:100%"></video>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="section-box">
+                <h5>Stego Video</h5>
+                <video src="{{ url_for('static', filename=stego_videopath) }}" controls style="max-width:100%"></video>
+            </div>
+        </div>
+    </div>
     {% endif %}
 
     <!-- Bottom Buttons -->
@@ -141,7 +162,7 @@
         {% endif %}
         {% if media_type == "audio" %}
         <a href="{{ url_for('static', filename=stego_audiopath) }}" class="btn btn-primary" download>
-          Download Audio
+            Download Audio
         </a>
         {% endif %}
     </div>
@@ -151,5 +172,5 @@
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
 <script src="{{ url_for('static', filename='js/results.js') }}" type="text/javascript"></script>
-
+{% endif %}
 {% endblock %}

@@ -48,6 +48,8 @@ from lsb_xor_algorithm import (
 # data comparison helpers
 from data_comparison import compute_pixel_diff, save_rgb_analysis_to_session, save_audio_analysis_to_session
 
+from capacity import is_mp4_extension, load_mp4_meta, compute_capacity_bytes_mp4
+from data_comparison import save_video_to_session
 # ------------------------------------------------------
 
 app = Flask(__name__)
@@ -239,7 +241,7 @@ def results():
             diff_visualization_filepath=diff_visual,
             gray_analysis_filepath=gray_analysis
         )
-
+       
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
         media_type = "audio"
         difference = compute_audio_diff(cover_filepath, stego_filepath)
@@ -260,6 +262,17 @@ def results():
             difference=difference,
             audio_analysis_filepath=audio_analysis
         )
+    
+    elif cover_filepath.lower().endswith(".mp4") and stego_filepath.lower().endswith(".mp4"):
+            media_type = "mp4"
+            cover_videopath = cover_filepath
+            stego_videopath = stego_filepath
+            return render_template(
+                "results.html",
+                media_type=media_type,
+                cover_videopath=cover_videopath,
+                stego_videopath=stego_videopath,
+            )
 
     else:
         flash("File incompatible. Please embed your file first.", "error")
@@ -326,6 +339,9 @@ def api_check_capacity():
         elif is_image_extension(cover.filename):
             meta_img = load_image_meta(cover_bytes)
             cap = compute_capacity_bytes_image(meta_img, lsb)
+        elif is_mp4_extension(cover.filename):
+            meta = load_mp4_meta(cover_bytes)
+            cap = compute_capacity_bytes_mp4(meta)
         else:
             return jsonify({"ok": False, "error": "Unsupported cover type"}), 400
     except Exception as e:
@@ -466,6 +482,24 @@ def embed_media():
         except Exception as e:
             flash(f"Embed (audio) failed: {e}", "error")
             return redirect(url_for("index"))
+    
+    # -------- MP4 PATH --------
+    if is_mp4_extension(cover.filename):
+        try:
+            meta = load_mp4_meta(cover_bytes)
+            capacity_bytes = compute_capacity_bytes_mp4(meta)
+            if len(payload_bytes) > capacity_bytes:
+                flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes.", "error")
+                return redirect(url_for("index"))
+
+            # Inject payload at the end of the file in a custom 'stg ' atom
+            stego_bytes = cover_bytes + b"\x00\x00\x00\x00stg " + payload_bytes
+
+            save_video_to_session(cover_bytes, stego_bytes)            
+            return redirect(url_for("results"))
+        except Exception as e:
+            flash(f"Embed (mp4) failed: {e}", "error")
+            return redirect(url_for("index"))
 
     flash("Unsupported cover type. Use PNG/BMP/GIF for images or WAV for audio.", "error")
     app.logger.info(
@@ -538,6 +572,24 @@ def extract_media():
         except Exception as e:
             flash(f"Extract (audio) failed: {e}", "error")
             return redirect(url_for("index"))
+        
+    # -------- MP4 PATH -------- 
+    if is_mp4_extension(stego.filename):
+        try:
+            data = stego.read()
+            # Find our 'stg ' atom
+            marker = b"stg "
+            idx = data.find(marker)
+            if idx == -1:
+                flash("No payload found in MP4.", "error")
+                return redirect(url_for("index"))
+            payload = data[idx + len(marker):]
+            return send_file(io.BytesIO(payload),
+                            as_attachment=True,
+                            download_name="payload.bin")
+        except Exception as e:
+            flash(f"Extract (mp4) failed: {e}", "error")
+            return redirect(url_for("index"))
 
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))
@@ -581,6 +633,16 @@ def hexcompare():
             cover_audiopath=cover_path,
             stego_audiopath=stego_path,
         )
+        
+    if cover_path.lower().endswith(".mp4") and stego_path.lower().endswith(".mp4"):
+        media_type = "mp4"
+        return render_template(
+            "hexcompare.html",
+            media_type=media_type,
+            cover_videopath=cover_path,
+            stego_videopath=stego_path,
+        )
+
 
     flash("Unsupported media for hex compare.", "error")
     return redirect(url_for("index"))

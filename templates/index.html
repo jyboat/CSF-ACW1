@@ -32,13 +32,16 @@
                             </div>
                         </div>
 
+
+
+
                         <div class="mb-3">
                             <input class="form-control" type="file" id="coverFile" name="coverFile"
-                                accept=".bmp,.png,.gif,.wav">
+                                accept=".bmp,.png,.gif,.wav,.mp4">
                         </div>
 
-                        <p class="text-danger">Only images (.png, .bmp, .gif) and audio files (.wav) are supported
-                        </p>
+                        <p class="text-danger">Only images (.png, .bmp, .gif), audio (.wav), and video (.mp4) are
+                            supported</p>
 
                         <div id="fileActions" class="text-center mt-3 d-none">
                             <button type="button" class="btn btn-danger" id="removeFileBtn">Remove File</button>
@@ -79,8 +82,8 @@
                             <label for="stegoKey" class="form-label">
                                 Please enter alphanumeric characters (A-Z, 1-9) to be used as a key to hide your object.
                             </label>
-                            <input type="text" class="form-control" id="stegoKey" name="stegoKey"
-                                   maxlength="64" pattern="[A-Za-z0-9]{1,64}" required>
+                            <input type="text" class="form-control" id="stegoKey" name="stegoKey" maxlength="64"
+                                pattern="[A-Za-z0-9]{1,64}" required>
                             <b class="text-danger">Max length: 64</b>
                         </div>
 
@@ -91,7 +94,7 @@
                             </b>
                             <br />
                             <button class="btn-sm btn-primary btn" type="button" data-target="#locationModal"
-                                    data-toggle="modal" id="skipBtn">
+                                data-toggle="modal" id="skipBtn">
                                 Upload payload
                             </button>
                         </div>
@@ -112,7 +115,8 @@
                     <form enctype="multipart/form-data" method="post" action="/extract">
                         <div class="mb-3">
                             <label class="form-label">Stego Image / Audio</label>
-                            <input class="form-control" type="file" name="stegoFile" accept=".png,.bmp,.gif,.wav" required>
+                            <input class="form-control" type="file" name="stegoFile" accept=".png,.bmp,.gif,.wav,.mp4"
+                                required>
                         </div>
                         <div class="row">
                             <div class="col-md-4">
@@ -146,6 +150,7 @@
 </section>
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
+
 <script src="{{ url_for('static', filename='js/script.js') }}" type="text/javascript"></script>
 
 {% endblock %}
@@ -168,7 +173,8 @@
                 <div class="form-group">
                     <label class="form-label" for="textPayload">Text Input</label>
                     <!-- Bind to main form via form attribute -->
-                    <textarea id="textPayload" name="textPayload" rows="4" class="form-control" form="stegoForm"></textarea>
+                    <textarea id="textPayload" name="textPayload" rows="4" class="form-control"
+                        form="stegoForm"></textarea>
                 </div>
                 <div class="text-center my-2">
                     <b>OR</b>
@@ -192,8 +198,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
                 <!-- Submit the main form directly to /embed -->
-                <button type="submit" class="btn btn-success"
-                        form="stegoForm" formaction="/embed" formmethod="post">
+                <button type="submit" class="btn btn-success" form="stegoForm" formaction="/embed" formmethod="post">
                     Hide my data!
                 </button>
             </div>
