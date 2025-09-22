@@ -557,34 +557,33 @@ def download_bundle():
 
 @app.route("/hexcompare")
 def hexcompare():
-    cover_filepath = session.get("cover")
-    stego_filepath = session.get("stego")
-    cover_audiopath = session.get("cover_audio")
-    stego_audiopath = session.get("stego_audio")
+    cover_path = session.get("cover")
+    stego_path = session.get("stego")
 
-    if (cover_filepath and stego_filepath and
-        cover_filepath.lower().endswith(".png") and stego_filepath.lower().endswith(".png")):
+    if not cover_path or not stego_path:
+        flash("No current files found. Please embed again.", "error")
+        return redirect(url_for("index"))
+
+    if cover_path.lower().endswith(".png") and stego_path.lower().endswith(".png"):
         media_type = "img"
         return render_template(
             "hexcompare.html",
             media_type=media_type,
-            cover_filepath=cover_filepath,
-            stego_filepath=stego_filepath,
+            cover_filepath=cover_path,
+            stego_filepath=stego_path,
         )
 
-    elif (cover_audiopath and stego_audiopath and
-          cover_audiopath.lower().endswith(".wav") and stego_audiopath.lower().endswith(".wav")):
+    if cover_path.lower().endswith(".wav") and stego_path.lower().endswith(".wav"):
         media_type = "audio"
         return render_template(
             "hexcompare.html",
             media_type=media_type,
-            cover_audiopath=cover_audiopath,
-            stego_audiopath=stego_audiopath,
+            cover_audiopath=cover_path,
+            stego_audiopath=stego_path,
         )
 
-    else:
-        flash("No current files found. Please embed again.", "error")
-        return redirect(url_for("index"))
+    flash("Unsupported media for hex compare.", "error")
+    return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.debug = True
