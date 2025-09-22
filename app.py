@@ -576,20 +576,22 @@ def extract_media():
     # -------- MP4 PATH -------- 
     if is_mp4_extension(stego.filename):
         try:
-            data = stego.read()
-            # Find our 'stg ' atom
+            data = file_bytes  # already read once
             marker = b"stg "
             idx = data.find(marker)
             if idx == -1:
                 flash("No payload found in MP4.", "error")
                 return redirect(url_for("index"))
             payload = data[idx + len(marker):]
-            return send_file(io.BytesIO(payload),
-                            as_attachment=True,
-                            download_name="payload.bin")
+            return send_file(
+                io.BytesIO(payload),
+                as_attachment=True,
+                download_name="payload.bin"
+            )
         except Exception as e:
             flash(f"Extract (mp4) failed: {e}", "error")
             return redirect(url_for("index"))
+
 
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))
