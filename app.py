@@ -250,8 +250,6 @@ def results():
 
         # Save AUDIO analysis
         save_audio_analysis_to_session(cover_filepath, stego_filepath)
-        cover_audiopath = session.get("cover_audio")
-        stego_audiopath = session.get("stego_audio")
         audio_analysis = session.get("audio_analysis_filepath")
 
         return render_template(

@@ -34,10 +34,10 @@
 
                         <div class="mb-3">
                             <input class="form-control" type="file" id="coverFile" name="coverFile"
-                                accept=".bmp,.png,.gif,.wav,.pcm">
+                                accept=".bmp,.png,.gif,.wav">
                         </div>
 
-                        <p class="text-danger">Only images (.png, .bmp, .gif) and audio files (.wav, .pcm) are supported
+                        <p class="text-danger">Only images (.png, .bmp, .gif) and audio files (.wav) are supported
                         </p>
 
                         <div id="fileActions" class="text-center mt-3 d-none">
@@ -77,9 +77,11 @@
 
                         <div class="mb-3">
                             <label for="stegoKey" class="form-label">
-                                Please enter a number as a key to hide your object
+                                Please enter alphanumeric characters (A-Z, 1-9) to be used as a key to hide your object.
                             </label>
-                            <input type="number" class="form-control" id="stegoKey" name="stegoKey" required>
+                            <input type="text" class="form-control" id="stegoKey" name="stegoKey"
+                                   maxlength="64" pattern="[A-Za-z0-9]{1,64}" required>
+                            <b class="text-danger">Max length: 64</b>
                         </div>
 
                         <div id="step3Text" class="text-center mt-2" style="display: none;">

@@ -115,7 +115,7 @@ def _linear_indices_from_xy(shape: tuple, start_x: int, start_y: int) -> np.ndar
         idx = np.concatenate([idx[start_idx:], idx[:start_idx]])
     return idx
 
-def _indices_excluding_alpha(shape: tuple, indices: np.ndarray, flat_cover: np.ndarray | None = None) -> np.ndarray:
+def _indices_excluding_alpha(shape: tuple, indices: np.ndarray, flat_cover = None) -> np.ndarray:
     """
     - Skip alpha channel in RGBA.
     - If RGBA *and* flat_cover is provided, also skip RGB of pixels where alpha==0.

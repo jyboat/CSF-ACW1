@@ -129,6 +129,12 @@ $(document).ready(function () {
             return; // no file, do nothing
         }
 
+        const noKey = $stegoKey.val().trim() == "";
+        if (noKey){
+            toastr.error("Please enter a key to proceed");
+            return;
+        }
+
         const file = $fileInput[0].files[0];
         const fileType = file.type;
 
