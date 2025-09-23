@@ -134,9 +134,8 @@
                             </div>
                             <div class="col-md-8">
                                 <label class="form-label">Key</label>
-                                <!-- <input class="form-control" type="file" id="payloadFile" name="payloadFile"
-                                        accept=".txt/*" form="key"> -->
-                                <input class="form-control" type="number" name="stegoKey" required>
+                                <input class="form-control" type="text" name="stegoKey" maxlength="64"
+                                       pattern="[A-Za-z0-9]{1,64}" required>
                             </div>
                         </div>
                         <div class="text-center mt-3">

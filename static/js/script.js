@@ -233,8 +233,8 @@ $(document).ready(function () {
         if (!files || files.length === 0) return;
 
         const file = files[0]; // only handle the first file for now
-        const allowedTypes = ["image/", "audio/"];
-        const allowedExtensions = [".bmp", ".png", ".gif", ".wav", ".pcm"];
+        const allowedTypes = ["image/", "audio/", "/video"];
+        const allowedExtensions = [".bmp", ".png", ".gif", ".wav", ".mp4"];
 
         // Check MIME type
         const isAllowedType = allowedTypes.some(type => file.type.startsWith(type));
