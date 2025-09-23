@@ -219,7 +219,9 @@ def results():
         flash("No current files found. Please embed your file first.", "error")
         return redirect(url_for("index"))
 
-    if cover_filepath.lower().endswith(".png") and stego_filepath.lower().endswith(".png"):
+    # Allow png, bmp, gif
+    valid_extensions = (".png", ".bmp", ".gif")
+    if cover_filepath.lower().endswith(valid_extensions) and stego_filepath.lower().endswith(valid_extensions):
         media_type = "img"
         difference = compute_pixel_diff(cover_filepath, stego_filepath)
 
@@ -408,6 +410,9 @@ def embed_media():
     # -------- IMAGE PATH --------
     if is_image_extension(cover.filename):
         try:
+            ext = os.path.splitext(cover.filename)[1].lower()
+            img_format = ext.lstrip('.').upper()               # "PNG"
+
             meta_img = load_image_meta(cover_bytes)
             capacity_bytes = compute_capacity_bytes_image(meta_img, lsb)
             if len(payload_bytes) > capacity_bytes:
@@ -416,6 +421,8 @@ def embed_media():
 
             has_alpha = detect_has_alpha(cover_bytes)
             mode = "RGBA" if has_alpha else "RGB"
+
+
 
             flat_cover, shape, _ = image_to_flat(cover_bytes, mode=mode)
 
@@ -432,10 +439,10 @@ def embed_media():
                     cover_bytes, flat_cover, shape, payload_bytes, k=lsb, key=key, mode=mode
                 )
 
-            stego_png = flat_to_image(stego_flat, shape, mode=mode)
+            stego_png = flat_to_image(stego_flat, shape, mode=mode, img_format=img_format)
 
 
-            save_images_to_session(cover_bytes, stego_png)
+            save_images_to_session(cover_bytes, stego_png, img_format=img_format)
 
             # Build ZIP in memory
             # zip_buf = io.BytesIO()

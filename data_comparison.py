@@ -19,11 +19,14 @@ def detect_has_alpha(cover_bytes: bytes) -> bool:
         return True
     return False
 
-def save_images_to_session(cover_bytes, stego_png):
+def save_images_to_session(cover_bytes, stego_png, img_format):
     try:
+        img_format = img_format.lstrip('.').lower()  # e.g. 'png', 'jpeg'
+        ext = '.' + img_format
+    
         uid = uuid.uuid4().hex
-        cover_filename = f"static/tmp/user/img/cover_{uid}.png"
-        stego_filename = f"static/tmp/user/img/stego_{uid}.png"
+        cover_filename = f"static/tmp/user/img/cover_{uid}{ext}"
+        stego_filename = f"static/tmp/user/img/stego_{uid}{ext}"
 
         with open(cover_filename, "wb") as f:
             f.write(cover_bytes)

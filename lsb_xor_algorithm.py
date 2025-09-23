@@ -23,11 +23,11 @@ def image_to_flat(image_bytes: bytes, mode: str = "RGB"):
     arr = np.array(im, dtype=np.uint8)        # (H, W, C) or (H, W)
     return arr.reshape(-1), arr.shape, im.mode
 
-def flat_to_image(flat: np.ndarray, shape: tuple, mode: str = "RGB") -> bytes:
+def flat_to_image(flat: np.ndarray, shape: tuple, mode: str = "RGB", img_format="PNG") -> bytes:
     arr = flat.reshape(shape).astype(np.uint8)
     im = Image.fromarray(arr, mode=mode)
     buf = io.BytesIO()
-    im.save(buf, format="PNG")                # lossless
+    im.save(buf, format=img_format)                # lossless
     buf.seek(0)
     return buf.getvalue()
 

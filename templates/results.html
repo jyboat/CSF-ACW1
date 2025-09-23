@@ -168,9 +168,15 @@
             Download Image
         </a>
         {% endif %}
+
         {% if media_type == "audio" %}
         <a href="{{ url_for('static', filename=stego_audiopath) }}" class="btn btn-primary" download>
             Download Audio
+        </a>
+        {% endif %}
+        {% if media_type == "mp4" %}
+        <a href="{{ url_for('static', filename=stego_videopath) }}" class="btn btn-primary" download>
+            Download Video
         </a>
         {% endif %}
     </div>
