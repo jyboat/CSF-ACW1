@@ -31,7 +31,8 @@ from data_comparison import (
     save_rgb_analysis_to_session,
     save_audio_analysis_to_session,
     save_image_comparison_to_session,
-    save_gray_analysis_to_session
+    save_gray_analysis_to_session,
+    save_spectrogram_comparison_to_session
     )
 
 # lsb_xor_algorithm.py  
@@ -254,13 +255,19 @@ def results():
         save_audio_analysis_to_session(cover_filepath, stego_filepath)
         audio_analysis = session.get("audio_analysis_filepath")
 
+        # Save AUDIO Spectogram analysis
+        save_spectrogram_comparison_to_session(cover_filepath, stego_filepath)
+        audio_spectrogram = session.get("audio_spectrogram_filepath")
+        
+
         return render_template(
             "results.html",
             media_type=media_type,
             cover_audiopath=cover_audiopath,
             stego_audiopath=stego_audiopath,
             difference=difference,
-            audio_analysis_filepath=audio_analysis
+            audio_analysis_filepath=audio_analysis,
+            audio_spectrogram_filepath=audio_spectrogram,
         )
     
     elif cover_filepath.lower().endswith(".mp4") and stego_filepath.lower().endswith(".mp4"):

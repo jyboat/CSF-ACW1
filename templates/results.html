@@ -41,7 +41,7 @@
     <script src="{{ url_for('static', filename='js/hex-diff.js') }}"></script>
     <script>initHexDiff();</script>
 
-    <!-- {% if media_type == "img" %} -->
+    {% if media_type == "img" %}
     <!-- IMAGE DISPLAY -->
     <!-- <div class="row"> -->
     <!-- Cover Object -->
@@ -132,6 +132,14 @@
         <img src="{{ url_for('static', filename=audio_analysis_filepath) }}" class="img-preview">
     </div>
     {% endif %}
+
+    {% if audio_spectrogram_filepath  %}
+    <div class="section-box text-center mt-4">
+        <h6><strong>Spectrogram Comparison</strong></h6>
+        <img src="{{ url_for('static', filename=audio_spectrogram_filepath) }}" class="img-preview">
+    </div>
+    {% endif %}
+
     {# ================= VIDEO (MP4) ================= #}
     {% elif media_type == "mp4" %}
     {% if cover_videopath and stego_videopath %}

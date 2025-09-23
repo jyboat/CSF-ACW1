@@ -1,4 +1,5 @@
 import uuid
+import os
 from flask import session
 from PIL import Image
 import numpy as np
@@ -165,7 +166,7 @@ def save_rgb_analysis_to_session(cover_path, stego_path):
     session['rgb_analysis_filepath'] = out_path.replace("static/", "")
     return True
 
-def save_audio_analysis_to_session(cover_path, stego_path, window=5000):
+def save_audio_analysis_to_session(cover_path, stego_path):
     """
     Perform basic steganalysis for audio using matplotlib.
     Produces difference signal.
@@ -184,7 +185,7 @@ def save_audio_analysis_to_session(cover_path, stego_path, window=5000):
     diff_signal = stego_audio - cover_audio
 
     # Limit plotting window for clarity (first N samples)
-    n = min(window, len(cover_audio))
+    n = len(cover_audio)
     x = np.arange(n) / sr1  # time axis in seconds
 
     plt.figure(figsize=(12, 4))
@@ -272,7 +273,7 @@ def save_image_comparison_to_session(cover_path: str, stego_path: str) -> bool:
 
     ax3 = plt.subplot(1, 3, 3)
     ax3.imshow(diff_vis, cmap=cmap, vmin=0, vmax=1)
-    ax3.set_title("Difference")
+    ax3.set_title("Difference highlighted in pink")
     ax3.axis("off")
 
     plt.tight_layout()
@@ -324,3 +325,58 @@ def save_gray_analysis_to_session(cover_path, stego_path):
 
     session['gray_analysis_filepath'] = out_path.replace("static/", "")
     return True
+
+def save_spectrogram_comparison_to_session(cover_path, stego_path):
+    # Load both audio files
+    cover_audio, sr1 = sf.read("static/" + cover_path)
+    stego_audio, sr2 = sf.read("static/" + stego_path)
+
+    if sr1 != sr2:
+        raise ValueError("Sample rates differ between cover and stego audio")
+    if cover_audio.shape != stego_audio.shape:
+        raise ValueError("Cover and stego audio must have same shape")
+    
+    # If 
+    if cover_audio.ndim > 1:
+        cover_audio = cover_audio[:,0]
+    if stego_audio.ndim > 1:
+        stego_audio = stego_audio[:,0]
+
+    # Difference signal
+    diff_signal = stego_audio - cover_audio
+
+    # Plot spectrograms side by side
+    plt.figure(figsize=(15, 5))
+
+    plt.subplot(1, 3, 1)
+    plt.specgram(cover_audio, Fs=sr1, cmap="inferno")
+    plt.title("Cover Audio Spectogram")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Frequency (Hz)")
+
+    plt.subplot(1, 3, 2)
+    plt.specgram(stego_audio, Fs=sr1, cmap="inferno")
+    plt.title("Stego Audio Spectogram")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Frequency (Hz)")
+
+    plt.subplot(1, 3, 3)
+    plt.specgram(diff_signal, Fs=sr1, cmap="inferno")
+    plt.title("Stego-Cover Spectrogram Difference")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Frequency (Hz)")
+
+
+    plt.tight_layout()
+
+    # Save spectogram image
+    uid = uuid.uuid4().hex
+    out_path = f"static/tmp/user/audio/spectrogram_{uid}.png"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path)
+    plt.close()
+
+    # Save path to session
+    session["audio_spectrogram_filepath"] = out_path.replace("static/", "")
+    return True
+
