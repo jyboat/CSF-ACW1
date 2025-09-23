@@ -41,7 +41,7 @@
     <script src="{{ url_for('static', filename='js/hex-diff.js') }}"></script>
     <script>initHexDiff();</script>
 
-    {% if media_type == "img" %}
+    <!-- {% if media_type == "img" %} -->
     <!-- IMAGE DISPLAY -->
     <!-- <div class="row"> -->
     <!-- Cover Object -->
@@ -150,7 +150,7 @@
         </div>
     </div>
     {% endif %}
-
+    {% endif %}
     <!-- Bottom Buttons -->
     <div class="mt-4 text-center">
         <a href="/" class="btn btn-secondary">Back to Home</a>
@@ -172,5 +172,4 @@
 
 <script src="https://unpkg.com/wavesurfer.js"></script>
 <script src="{{ url_for('static', filename='js/results.js') }}" type="text/javascript"></script>
-{% endif %}
 {% endblock %}
