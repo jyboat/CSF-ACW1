@@ -469,12 +469,12 @@ def build_indices_for_audio_with_start(
         hdr_set = set(int(i) for i in hdr_idx)
         payload_idx = np.array([i for i in rotated if int(i) not in hdr_set], dtype=np.int64)
 
-    total_bits = (32 + payload_nbytes) * 8
-    total_groups = (total_bits + k_bits - 1) // k_bits
-    if total_groups > (hdr_idx.size + payload_idx.size):
+    payload_bits = payload_nbytes * 8
+    payload_groups = (payload_bits + k_bits - 1) // k_bits
+
+    if hdr_groups + payload_groups > hdr_idx.size + payload_idx.size:
         raise ValueError("Not enough capacity in selected indices")
 
-    payload_groups = total_groups - hdr_idx.size
     indices_all = np.concatenate([hdr_idx, payload_idx[:payload_groups]]).astype(np.int64)
     return indices_all, hdr_groups
 
@@ -500,7 +500,16 @@ def embed_xor_lsb_audio(samples: np.ndarray, payload: bytes, k: int, key: str,
         stego[idx] = (int(stego[idx]) & ~((1 << k) - 1)) | chunk
     # write payload
     off = (hdr_bits.size + k - 1) // k
-    for i in range((pay_bits.size + k - 1) // k):
+    need = (pay_bits.size + k - 1) // k
+
+    if off + need > indices_all.size:
+        raise ValueError(
+            f"Index plan/loop mismatch: need {off + need} slots "
+            f"(header={off}, payload={need}), but only "
+            f"{indices_all.size} planned"
+        )
+
+    for i in range(need):
         idx = int(indices_all[off + i]); chunk = 0
         for t in range(k):
             b = i * k + t
