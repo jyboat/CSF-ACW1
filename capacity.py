@@ -44,7 +44,11 @@ def is_wav_extension(filename: str) -> bool:
 
 def is_image_extension(filename: str) -> bool:
     fn = filename.lower()
-    return fn.endswith(".bmp") or fn.endswith(".png") or fn.endswith(".gif")
+    return fn.endswith(".bmp") or fn.endswith(".png")
+
+def is_gif_extension(filename: str) -> bool:
+    fn = filename.lower()
+    return fn.endswith(".gif")
 
 def load_audio_meta(path_or_bytes) -> CoverMetaAudio:
     """

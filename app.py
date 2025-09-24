@@ -13,6 +13,7 @@ import numpy as np
 from capacity import (
     is_wav_extension,
     is_image_extension,
+    is_gif_extension,
     load_audio_meta,
     load_image_meta,
     compute_capacity_bytes,
@@ -41,6 +42,12 @@ from lsb_xor_algorithm import (
     embed_xor_lsb_auto,                 
     extract_xor_lsb_auto,               
     embed_xor_lsb_audio, extract_xor_lsb_audio
+)
+
+from lsb_xor_gif_multiframe import (
+    embed_gif_multiframe_lsb_xor,
+    extract_gif_multiframe_lsb_xor, 
+    compute_gif_multiframe_capacity
 )
 
 # data comparison helpers
@@ -350,6 +357,8 @@ def api_check_capacity():
         elif is_mp4_extension(cover.filename):
             meta = load_mp4_meta(cover_bytes)
             cap = compute_capacity_bytes_mp4(meta)
+        elif is_gif_extension(cover.filename):
+            cap = compute_gif_multiframe_capacity(cover_bytes, lsb)  # ALL frames
         else:
             return jsonify({"ok": False, "error": "Unsupported cover type"}), 400
     except Exception as e:
@@ -406,6 +415,27 @@ def embed_media():
     payload_bytes = text_payload_str.encode("utf-8") if text_payload_str else payload_file.read()
     cover_bytes = cover.read()
 
+    # -------- ANIMATED GIF PATH --------
+    if is_gif_extension(cover.filename):
+        try:
+            # Calculate capacity across ALL frames
+            capacity_bytes = compute_gif_multiframe_capacity(cover_bytes, lsb)
+            if len(payload_bytes) > capacity_bytes:
+                flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes (across all frames).", "error")
+                return redirect(url_for("index"))
+
+            app.logger.info(f"Embedding {len(payload_bytes)} bytes across all GIF frames (capacity: {capacity_bytes})")
+
+            # Embed across ALL frames using LSB+XOR algorithm
+            stego_gif = embed_gif_multiframe_lsb_xor(cover_bytes, payload_bytes, k=lsb, key=key)
+            
+            save_images_to_session(cover_bytes, stego_gif, img_format="gif")
+            return redirect(url_for("results"))
+
+        except Exception as e:
+            flash(f"Embed (multi-frame GIF) failed: {e}", "error")
+            return redirect(url_for("index"))
+    
     # -------- IMAGE PATH --------
     if is_image_extension(cover.filename):
         try:
@@ -551,6 +581,23 @@ def extract_media():
     file_bytes = stego.read()
 
     # -------- IMAGE PATH --------
+    if is_gif_extension(stego.filename):
+        try:
+            app.logger.info("Extracting payload from all GIF frames")
+            
+            # Extract from ALL frames using your LSB+XOR algorithm
+            payload = extract_gif_multiframe_lsb_xor(file_bytes, k=lsb, key=key)
+            
+            return send_file(
+                io.BytesIO(payload),
+                mimetype="application/octet-stream",
+                as_attachment=True, 
+                download_name="extracted_payload.bin",
+            )
+        except Exception as e:
+            flash(f"Extract (multi-frame GIF) failed: {e}", "error")
+            return redirect(url_for("index"))
+            
     if is_image_extension(stego.filename):
         try:
             has_alpha = detect_has_alpha(file_bytes)
