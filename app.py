@@ -3,13 +3,11 @@ from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, send_file, jsonify, session
 )
-from typing import Any
-import io, logging, re
+import io, logging
 import os
 import wave
 import numpy as np
 # from zipfile import ZipFile, ZIP_DEFLATED
-import uuid
 
 # capacity.py
 from capacity import (
@@ -39,7 +37,6 @@ from data_comparison import (
 from lsb_xor_algorithm import (
     image_to_flat,
     flat_to_image,
-    _linear_indices_from_xy,            
     embed_xor_lsb_from_xy,              
     embed_xor_lsb_auto,                 
     extract_xor_lsb_auto,               
@@ -51,6 +48,8 @@ from data_comparison import compute_pixel_diff, save_rgb_analysis_to_session, sa
 
 from capacity import is_mp4_extension, load_mp4_meta, compute_capacity_bytes_mp4
 from data_comparison import save_video_to_session
+from lsb_xor_algorithm import extract_xor_lsb_mp4, embed_xor_lsb_mp4
+
 # ------------------------------------------------------
 
 app = Flask(__name__)
@@ -506,10 +505,9 @@ def embed_media():
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes.", "error")
                 return redirect(url_for("index"))
 
-            # Inject payload at the end of the file in a custom 'stg ' atom
-            stego_bytes = cover_bytes + b"\x00\x00\x00\x00stg " + payload_bytes
+            stego_bytes = embed_xor_lsb_mp4(cover_bytes, payload_bytes, k=lsb, key=key)
 
-            save_video_to_session(cover_bytes, stego_bytes)            
+            save_video_to_session(cover_bytes, stego_bytes)
             return redirect(url_for("results"))
         except Exception as e:
             flash(f"Embed (mp4) failed: {e}", "error")
@@ -590,13 +588,7 @@ def extract_media():
     # -------- MP4 PATH -------- 
     if is_mp4_extension(stego.filename):
         try:
-            data = file_bytes  # already read once
-            marker = b"stg "
-            idx = data.find(marker)
-            if idx == -1:
-                flash("No payload found in MP4.", "error")
-                return redirect(url_for("index"))
-            payload = data[idx + len(marker):]
+            payload = extract_xor_lsb_mp4(file_bytes, k=lsb, key=key)
             return send_file(
                 io.BytesIO(payload),
                 as_attachment=True,
@@ -605,7 +597,6 @@ def extract_media():
         except Exception as e:
             flash(f"Extract (mp4) failed: {e}", "error")
             return redirect(url_for("index"))
-
 
     flash("Unsupported file type for extraction.", "error")
     return redirect(url_for("index"))

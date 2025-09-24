@@ -556,3 +556,161 @@ def extract_xor_lsb_audio(stego: np.ndarray, k: int, key: str):
     if hashlib.sha256(payload).digest()[:8] != hdr.sha8:
         raise ValueError("Checksum mismatch")
     return payload, hdr
+
+# =====================================
+# ======= EMBED / EXTRACT (MP4) =====
+# =====================================
+
+def _iter_mp4_top_level_boxes(b: bytes):
+    """
+    Yield (offset, size, typ, header_size). Handles 32-bit and 64-bit (size == 1) boxes.
+    """
+    i, n = 0, len(b)
+    while i + 8 <= n:
+        size = int.from_bytes(b[i:i+4], "big")
+        typ  = b[i+4:i+8]
+        if size == 0:
+            # box extends to eof
+            box_size = n - i
+            yield i, box_size, typ, 8
+            return
+        elif size == 1:
+            if i + 16 > n: break
+            largesize = int.from_bytes(b[i+8:i+16], "big")
+            if largesize < 16: break
+            yield i, largesize, typ, 16
+            i += largesize
+        else:
+            if size < 8 or i + size > n: break
+            yield i, size, typ, 8
+            i += size
+
+def _find_mdat_regions(mp4_bytes: bytes):
+    """
+    Return list of (data_offset, data_size) for each mdat's payload (excludes header).
+    """
+    out = []
+    for off, size, typ, hdr in _iter_mp4_top_level_boxes(mp4_bytes):
+        if typ == b"mdat":
+            data_off  = off + hdr
+            data_size = max(0, size - hdr)
+            if data_off + data_size <= len(mp4_bytes) and data_size > 0:
+                out.append((data_off, data_size))
+    return out
+
+def _build_indices_for_mp4(mdat_len: int, key: str, k_bits: int, payload_nbytes: int):
+    """
+    Mirror the audio index planner: a keyed permutation over [0, mdat_len),
+    reserve first hdr_groups positions for the header, then payload groups after.
+    """
+    header_bits = 32 * 8  # we reuse the 32-byte STG2 audio header
+    hdr_groups  = (header_bits + k_bits - 1) // k_bits
+    payload_bits   = payload_nbytes * 8
+    payload_groups = (payload_bits + k_bits - 1) // k_bits
+
+    if hdr_groups + payload_groups > mdat_len:
+        raise ValueError("Not enough capacity in mdat for header + payload")
+
+    seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
+    rng  = np.random.RandomState(int(seed) & 0x7FFFFFFF)
+    perm = np.arange(mdat_len, dtype=np.int64)
+    rng.shuffle(perm)
+
+    indices_all = perm[: hdr_groups + payload_groups].astype(np.int64)
+    return indices_all, hdr_groups, payload_groups
+
+def _lsb_write_chunks(byte_arr: bytearray, abs_positions: np.ndarray, bits: np.ndarray, k: int):
+    """
+    Write 'bits' into k-LSBs of bytes at abs_positions (grouped k bits per position).
+    """
+    pad = (-len(bits)) % k
+    if pad:
+        bits = np.concatenate([bits, np.zeros(pad, dtype=np.uint8)])
+    groups = bits.reshape(-1, k)
+    if groups.shape[0] > abs_positions.size:
+        raise ValueError("Index plan too small for bits being written")
+
+    mask = ~((1 << k) - 1) & 0xFF
+    for i, grp in enumerate(groups):
+        v = 0
+        for b in grp:
+            v = (v << 1) | int(b)
+        p = int(abs_positions[i])
+        byte_arr[p] = (byte_arr[p] & mask) | v
+
+def _lsb_read_chunks(byte_seq: bytes, abs_positions: np.ndarray, k: int, n_bits: int) -> np.ndarray:
+    groups = (n_bits + k - 1) // k
+    if groups > abs_positions.size:
+        raise ValueError("Index plan too small for bits being read")
+    out = []
+    mask = (1 << k) - 1
+    for i in range(groups):
+        p = int(abs_positions[i])
+        v = byte_seq[p] & mask
+        for t in range(k - 1, -1, -1):
+            out.append((v >> t) & 1)
+    return np.array(out[:n_bits], dtype=np.uint8)
+
+def embed_xor_lsb_mp4(mp4_bytes: bytes, payload: bytes, k: int, key: str) -> bytes:
+    """
+    LSB-embed payload in the first (or largest) mdat using the same STG2+XOR design as audio.
+    """
+    mdats = _find_mdat_regions(mp4_bytes)
+    if not mdats:
+        raise ValueError("No mdat box found in MP4")
+    # choose the largest mdat to maximize capacity
+    data_off, data_len = max(mdats, key=lambda t: t[1])
+
+    # plan indices within mdat
+    indices_rel, hdr_groups, pay_groups = _build_indices_for_mp4(data_len, key, k, len(payload))
+    # lift to absolute file offsets
+    abs_idx = data_off + indices_rel
+
+    # header + payload bits (XOR keystream)
+    from lsb_xor_algorithm import keystream_bits  # you already have this
+    hdr_bytes = make_audio_header(payload, start_sample=0, use_complex=False)  # reuse audio header (32B)
+    hdr_bits  = np.unpackbits(np.frombuffer(hdr_bytes, dtype=np.uint8))
+    pay_bits  = np.unpackbits(np.frombuffer(payload,    dtype=np.uint8))
+    C_hdr = hdr_bits ^ keystream_bits(key, hdr_bits.size)
+    C_pay = pay_bits ^ keystream_bits(key, pay_bits.size)
+
+    out = bytearray(mp4_bytes)
+    _lsb_write_chunks(out, abs_idx[:hdr_groups], C_hdr, k)
+    _lsb_write_chunks(out, abs_idx[hdr_groups:hdr_groups+pay_groups], C_pay, k)
+    return bytes(out)
+
+def extract_xor_lsb_mp4(mp4_bytes: bytes, k: int, key: str) -> bytes:
+    """
+    Recover payload from mdat using the same keyed permutation and 32-byte STG2 (audio) header.
+    """
+    mdats = _find_mdat_regions(mp4_bytes)
+    if not mdats:
+        raise ValueError("No mdat box found in MP4")
+    data_off, data_len = max(mdats, key=lambda t: t[1])
+
+    # first, read the header using the same index plan length for header only
+    header_bits = 32 * 8
+    hdr_groups  = (header_bits + k - 1) // k
+    # we don't yet know payload length, so build a full perm then slice
+    seed = np.frombuffer(key.encode("utf-8"), dtype=np.uint8).sum(dtype=np.uint32)
+    rng  = np.random.RandomState(int(seed) & 0x7FFFFFFF)
+    perm = np.arange(data_len, dtype=np.int64); rng.shuffle(perm)
+    abs_hdr_idx = data_off + perm[:hdr_groups]
+
+    from lsb_xor_algorithm import keystream_bits
+    C_hdr = _lsb_read_chunks(mp4_bytes, abs_hdr_idx, k, header_bits)
+    M_hdr = C_hdr ^ keystream_bits(key, len(C_hdr))
+    hdr   = parse_audio_header(np.packbits(M_hdr).tobytes())  # reuse audio STG2 header parser
+
+    # now know length; rebuild full plan and read payload
+    indices_rel, hdr_groups2, pay_groups = _build_indices_for_mp4(data_len, key, k, hdr.length)
+    assert hdr_groups2 == hdr_groups
+    abs_pay_idx = data_off + indices_rel[hdr_groups:hdr_groups+pay_groups]
+
+    C_pay = _lsb_read_chunks(mp4_bytes, abs_pay_idx, k, hdr.length * 8)
+    payload = np.packbits(C_pay ^ keystream_bits(key, len(C_pay))).tobytes()
+
+    import hashlib as _hashlib
+    if _hashlib.sha256(payload).digest()[:8] != hdr.sha8:
+        raise ValueError("Checksum mismatch")
+    return payload
