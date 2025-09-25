@@ -7,6 +7,7 @@ import io, logging
 import os
 import wave
 import numpy as np
+from PIL import Image
 # from zipfile import ZipFile, ZIP_DEFLATED
 
 # capacity.py
@@ -33,6 +34,7 @@ from data_comparison import (
     save_gray_analysis_to_session,
     save_spectrogram_comparison_to_session,
     save_video_psnr_analysis_to_session,
+    save_gif_diff_animation_to_session
     )
 
 # lsb_xor_algorithm.py  
@@ -46,9 +48,9 @@ from lsb_xor_algorithm import (
 )
 
 from lsb_xor_gif_multiframe import (
-    embed_gif_multiframe_lsb_xor,
-    extract_gif_multiframe_lsb_xor, 
-    compute_gif_multiframe_capacity
+    compute_gif_multiframe_capacity,
+    embed_gif_multiframe_lsb_xor_even as embed_gif_multiframe_lsb_xor,
+    extract_gif_multiframe_lsb_xor_even as extract_gif_multiframe_lsb_xor
 )
 
 # data comparison helpers
@@ -226,13 +228,15 @@ def results():
         flash("No current files found. Please embed your file first.", "error")
         return redirect(url_for("index"))
 
-    # Allow png, bmp, gif
+    # IMAGE / GIF path
     valid_extensions = (".png", ".bmp", ".gif")
     if cover_filepath.lower().endswith(valid_extensions) and stego_filepath.lower().endswith(valid_extensions):
         media_type = "img"
+
+        # Basic pixel diff (for quick counts/coords; for GIFs this is effectively first frame)
         difference = compute_pixel_diff(cover_filepath, stego_filepath)
 
-        # Save RGB analysis
+        # Standard image analyses
         save_rgb_analysis_to_session(cover_filepath, stego_filepath)
         rgb_analysis = session.get("rgb_analysis_filepath")
 
@@ -241,6 +245,20 @@ def results():
 
         save_gray_analysis_to_session(cover_filepath, stego_filepath)
         gray_analysis = session.get("gray_analysis_filepath")
+
+        # --- Animated GIF specific: build an animated per-frame diff if possible ---
+        gif_diff_filepath = None
+        if cover_filepath.lower().endswith(".gif") and stego_filepath.lower().endswith(".gif"):
+            try:
+
+                with Image.open("static/" + cover_filepath) as c, Image.open("static/" + stego_filepath) as s:
+                    if getattr(c, "is_animated", False) and getattr(s, "is_animated", False):
+                        save_gif_diff_animation_to_session(cover_filepath, stego_filepath)
+                        gif_diff_filepath = session.get("gif_diff_filepath")
+            except Exception as e:
+                # Non-fatal: we still render the page without the animated diff
+                app.logger.warning(f"GIF animated diff could not be generated: {e}")
+
         return render_template(
             "results.html",
             media_type=media_type,
@@ -249,25 +267,23 @@ def results():
             difference=difference,
             rgb_analysis_filepath=rgb_analysis,
             diff_visualization_filepath=diff_visual,
-            gray_analysis_filepath=gray_analysis
+            gray_analysis_filepath=gray_analysis,
+            gif_diff_filepath=gif_diff_filepath  # may be None if not animated or on error
         )
-       
+
+    # AUDIO path
     elif cover_filepath.lower().endswith(".wav") and stego_filepath.lower().endswith(".wav"):
         media_type = "audio"
         difference = compute_audio_diff(cover_filepath, stego_filepath)
 
-        # Pass audio paths
         cover_audiopath = cover_filepath
         stego_audiopath = stego_filepath
 
-        # Save AUDIO analysis
         save_audio_analysis_to_session(cover_filepath, stego_filepath)
         audio_analysis = session.get("audio_analysis_filepath")
 
-        # Save AUDIO Spectogram analysis
         save_spectrogram_comparison_to_session(cover_filepath, stego_filepath)
         audio_spectrogram = session.get("audio_spectrogram_filepath")
-        
 
         return render_template(
             "results.html",
@@ -278,23 +294,23 @@ def results():
             audio_analysis_filepath=audio_analysis,
             audio_spectrogram_filepath=audio_spectrogram,
         )
-    
+
+    # VIDEO (MP4) path
     elif cover_filepath.lower().endswith(".mp4") and stego_filepath.lower().endswith(".mp4"):
-            media_type = "mp4"
-            cover_videopath = cover_filepath
-            stego_videopath = stego_filepath
+        media_type = "mp4"
+        cover_videopath = cover_filepath
+        stego_videopath = stego_filepath
 
-            save_video_psnr_analysis_to_session(cover_videopath, stego_videopath)
-            video_psnr_filepath = session['video_psnr_filepath']
+        save_video_psnr_analysis_to_session(cover_videopath, stego_videopath)
+        video_psnr_filepath = session['video_psnr_filepath']
 
-
-            return render_template(
-                "results.html",
-                media_type=media_type,
-                cover_videopath=cover_videopath,
-                stego_videopath=stego_videopath,
-                video_psnr_filepath=video_psnr_filepath,
-            )
+        return render_template(
+            "results.html",
+            media_type=media_type,
+            cover_videopath=cover_videopath,
+            stego_videopath=stego_videopath,
+            video_psnr_filepath=video_psnr_filepath,
+        )
 
     else:
         flash("File incompatible. Please embed your file first.", "error")

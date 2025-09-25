@@ -23,23 +23,19 @@ def detect_has_alpha(cover_bytes: bytes) -> bool:
 
 def save_images_to_session(cover_bytes, stego_png, img_format):
     try:
-        img_format = img_format.lstrip('.').lower()  # e.g. 'png', 'jpeg'
+        img_format = img_format.lstrip('.').lower()
         ext = '.' + img_format
-    
         uid = uuid.uuid4().hex
         cover_filename = f"static/tmp/user/img/cover_{uid}{ext}"
         stego_filename = f"static/tmp/user/img/stego_{uid}{ext}"
-
+        os.makedirs(os.path.dirname(cover_filename), exist_ok=True)  # <-- add
         with open(cover_filename, "wb") as f:
             f.write(cover_bytes)
-
         with open(stego_filename, "wb") as f:
             f.write(stego_png)
-        
         session['cover'] = cover_filename.replace("static/", "")
         session['stego'] = stego_filename.replace("static/", "")
         return True
-    
     except Exception as e:
         print(f"Error saving images to session: {e}")
         return False
@@ -488,3 +484,64 @@ def save_video_psnr_analysis_to_session(cover_path, stego_path, step=60):
     session['video_psnr_filepath'] = out_path.replace("static/", "")
     return True
 
+def save_gif_diff_animation_to_session(cover_path: str, stego_path: str) -> bool:
+    """
+    Build an animated GIF showing per-frame differences (heatmap-style).
+    Saves to static/tmp/user/img/gif_diff_<uuid>.gif and sets session['gif_diff_filepath'].
+    """
+    import os, uuid
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from PIL import Image
+
+    cover_file = "static/" + cover_path
+    stego_file = "static/" + stego_path
+
+    with Image.open(cover_file) as c, Image.open(stego_file) as s:
+        if not (getattr(c, "is_animated", False) and getattr(s, "is_animated", False)):
+            raise ValueError("Both cover and stego must be animated GIFs")
+        if c.n_frames != s.n_frames:
+            raise ValueError("GIFs must have the same number of frames")
+
+        frames_out = []
+        durations = []
+        loop = c.info.get("loop", 0)
+
+        for i in range(c.n_frames):
+            c.seek(i); s.seek(i)
+            c_rgba = c.convert("RGBA")
+            s_rgba = s.convert("RGBA")
+
+            if c_rgba.size != s_rgba.size:
+                raise ValueError(f"Frame {i} sizes differ")
+
+            c_arr = np.array(c_rgba, dtype=np.int16)[..., :3]
+            s_arr = np.array(s_rgba, dtype=np.int16)[..., :3]
+
+            # Mean absolute diff per pixel -> 0..255
+            diff = np.abs(s_arr - c_arr).mean(axis=2).astype(np.float32)
+
+            # Contrast stretch so small diffs are visible
+            if diff.size:
+                p1, p99 = np.percentile(diff, [1, 99])
+                if p99 <= p1:
+                    p1, p99 = 0.0, 1.0
+                vis = np.clip((diff - p1) / (p99 - p1), 0, 1)
+            else:
+                vis = diff
+
+            rgb = (plt.cm.magma(vis)[..., :3] * 255).astype(np.uint8)
+            frames_out.append(Image.fromarray(rgb, mode="RGB"))
+            durations.append(c.info.get("duration", 100))
+
+    uid = uuid.uuid4().hex
+    out_path = f"static/tmp/user/img/gif_diff_{uid}.gif"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    frames_out[0].save(
+        out_path, save_all=True, append_images=frames_out[1:],
+        duration=durations, loop=loop, optimize=False, disposal=2
+    )
+
+    session["gif_diff_filepath"] = out_path.replace("static/", "")
+    return True

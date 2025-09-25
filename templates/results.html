@@ -42,60 +42,74 @@
     <script>initHexDiff();</script>
 
     {% if media_type == "img" %}
-    <!-- IMAGE DISPLAY -->
-    <!-- <div class="row"> -->
-    <!-- Cover Object -->
-    <!-- <div class="col-md-6">
-            <div class="section-box">
-                <h5>Original Cover Object</h5>
-                <img src="{{ url_for('static', filename=cover_filepath) }}" class="cover-image" id="coverImage">
-            </div>
-        </div> -->
-    <!-- Stego Object -->
-    <!-- <div class="col-md-6">
-            <div class="section-box">
-                <h5>Stego Object</h5> -->
-    <!-- <img src="{{ url_for('static', filename=stego_filepath) }}" class="cover-image" id="stegoImage">
-            </div> -->
-    <!-- </div> -->
-    <!-- </div> -->
+        {% set is_gif = cover_filepath and stego_filepath and cover_filepath.lower().endswith('.gif') and stego_filepath.lower().endswith('.gif') %}
 
-    <!-- Side-by-side Visual Comparison -->
-    {% if diff_visualization_filepath %}
-    <div class="row mt-4">
-        <div class="col-md-12 text-center">
-            <div class="section-box">
+        {% if is_gif %}
+        {# -------- GIF MODE: animated previews + animated per-frame diff only -------- #}
+        <div class="row mt-3">
+            <div class="col-md-6">
+            <div class="section-box text-center">
+                <h5>Original GIF</h5>
+                <img src="{{ url_for('static', filename=cover_filepath) }}" class="img-preview" style="max-width:100%;image-rendering:auto;" alt="Original GIF">
+            </div>
+            </div>
+            <div class="col-md-6">
+            <div class="section-box text-center">
+                <h5>Stego GIF</h5>
+                <img src="{{ url_for('static', filename=stego_filepath) }}" class="img-preview" style="max-width:100%;image-rendering:auto;" alt="Stego GIF">
+            </div>
+            </div>
+        </div>
+
+        {% if gif_diff_filepath %}
+            <div class="row mt-3">
+            <div class="col-md-12 text-center">
+                <div class="section-box">
+                <h6><strong>Per-frame Difference (animated)</strong></h6>
+                <img src="{{ url_for('static', filename=gif_diff_filepath) }}" class="img-preview" style="max-width:100%;" alt="Animated GIF per-frame difference">
+                <p class="text-muted small mt-2">Brighter areas indicate larger changes per frame.</p>
+                </div>
+            </div>
+            </div>
+        {% else %}
+            <p class="text-center text-muted small mt-3">Per-frame difference not available for this GIF.</p>
+        {% endif %}
+
+        {% else %}
+        {# -------- NON-GIF IMAGES: show static analyses -------- #}
+
+        {% if diff_visualization_filepath %}
+            <div class="row mt-4">
+            <div class="col-md-12 text-center">
+                <div class="section-box">
                 <h6><strong>Cover vs Stego (Difference)</strong></h6>
-                <img src="{{ url_for('static', filename=diff_visualization_filepath) }}" class="img-preview"
-                    id="imgComparison">
+                <img src="{{ url_for('static', filename=diff_visualization_filepath) }}" class="img-preview" id="imgComparison" alt="Difference heatmap">
+                </div>
             </div>
-        </div>
-    </div>
-    {% endif %}
+            </div>
+        {% endif %}
 
-    {% if gray_analysis_filepath %}
-    <div class="row mt-4">
-        <div class="col-md-12 text-center">
-            <div class="section-box">
+        {% if gray_analysis_filepath %}
+            <div class="row mt-4">
+            <div class="col-md-12 text-center">
+                <div class="section-box">
                 <h6><strong>Grayscale Intensity Analysis</strong></h6>
-                <img src="{{ url_for('static', filename=gray_analysis_filepath) }}" class="img-preview"
-                    id="grayAnalysisImage">
+                <img src="{{ url_for('static', filename=gray_analysis_filepath) }}" class="img-preview" id="grayAnalysisImage" alt="Grayscale histogram">
+                </div>
             </div>
-        </div>
-    </div>
-    {% endif %}
+            </div>
+        {% endif %}
 
-    <!-- RGB Analysis -->
-    {% if rgb_analysis_filepath %}
-    <div class="row mt-4">
-        <div class="col-md-12 text-center">
-            <div class="section-box">
+        {% if rgb_analysis_filepath %}
+            <div class="row mt-4">
+            <div class="col-md-12 text-center">
+                <div class="section-box">
                 <h6><strong>RGB Channel Analysis</strong></h6>
-                <img src="{{ url_for('static', filename=rgb_analysis_filepath) }}" class="img-preview"
-                    id="rgbAnalysisImage">
+                <img src="{{ url_for('static', filename=rgb_analysis_filepath) }}" class="img-preview" id="rgbAnalysisImage" alt="RGB Channel Analysis">
+                </div>
             </div>
-        </div>
-    </div>
+            </div>
+        {% endif %}
     {% endif %}
 
     {% elif media_type == "audio" %}
