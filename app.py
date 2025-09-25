@@ -42,7 +42,9 @@ from lsb_xor_algorithm import (
     embed_xor_lsb_from_xy,              
     embed_xor_lsb_auto,                 
     extract_xor_lsb_auto,               
-    embed_xor_lsb_audio, extract_xor_lsb_audio
+    embed_xor_lsb_audio, extract_xor_lsb_audio,
+    embed_uuid_box_mp4,
+    extract_uuid_box_mp4
 )
 
 from lsb_xor_gif_multiframe import (
@@ -526,7 +528,6 @@ def embed_media():
             )
 
             save_audio_to_session(cover_bytes, stego_wav)
-
             return redirect(url_for("results"))
 
         except Exception as e:
@@ -538,11 +539,12 @@ def embed_media():
         try:
             meta = load_mp4_meta(cover_bytes)
             capacity_bytes = compute_capacity_bytes_mp4(meta)
+
             if len(payload_bytes) > capacity_bytes:
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes.", "error")
                 return redirect(url_for("index"))
 
-            stego_bytes = embed_xor_lsb_mp4(cover_bytes, payload_bytes, k=lsb, key=key)
+            stego_bytes = embed_uuid_box_mp4(cover_bytes, payload_bytes, k=lsb, key=key)
 
             save_video_to_session(cover_bytes, stego_bytes)
             return redirect(url_for("results"))
@@ -642,9 +644,10 @@ def extract_media():
     # -------- MP4 PATH -------- 
     if is_mp4_extension(stego.filename):
         try:
-            payload = extract_xor_lsb_mp4(file_bytes, k=lsb, key=key)
+            payload = extract_uuid_box_mp4(file_bytes, k=lsb, key=key)
             return send_file(
                 io.BytesIO(payload),
+                mimetype="application/octet-stream",
                 as_attachment=True,
                 download_name="payload.bin"
             )
