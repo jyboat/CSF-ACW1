@@ -171,21 +171,6 @@
                 </div>
             </div>
         </div>
-        {% if video_psnr_filepath %}
-            <div class="section-box text-center mt-4">
-                <h6 class="mb-2"><strong>Video Peak Signal to Noise Ratio Analysis</strong></h6>
-                <ul class="text-left d-inline-block">
-                    <li><strong>High PSNR (&gt;40 dB):</strong> Almost identical frames</li>
-                    <li><strong>Moderate PSNR (30–40 dB):</strong> Slight differences, visually similar</li>
-                    <li><strong>Low PSNR (&lt;30 dB):</strong> Significant differences, possible visible distortion</li>
-                </ul>
-                <img src="{{ url_for('static', filename=video_psnr_filepath) }}" class="img-preview">
-                <p class="text-muted mt-2">
-                    Higher PSNR indicates frames are very similar (low distortion),
-                    while lower PSNR indicates more visible differences between the cover and stego video.
-                </p>
-            </div>
-        {% endif %}
     {% endif %}
     {% endif %}
     <!-- Bottom Buttons -->

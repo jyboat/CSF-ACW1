@@ -33,7 +33,6 @@ from data_comparison import (
     save_image_comparison_to_session,
     save_gray_analysis_to_session,
     save_spectrogram_comparison_to_session,
-    save_video_psnr_analysis_to_session,
     save_gif_diff_animation_to_session
     )
 
@@ -44,7 +43,9 @@ from lsb_xor_algorithm import (
     embed_xor_lsb_from_xy,              
     embed_xor_lsb_auto,                 
     extract_xor_lsb_auto,               
-    embed_xor_lsb_audio, extract_xor_lsb_audio
+    embed_xor_lsb_audio, extract_xor_lsb_audio,
+    embed_uuid_box_mp4,
+    extract_uuid_box_mp4
 )
 
 from lsb_xor_gif_multiframe import (
@@ -53,12 +54,9 @@ from lsb_xor_gif_multiframe import (
     extract_gif_multiframe_lsb_xor
 )
 
-# data comparison helpers
-from data_comparison import compute_pixel_diff, save_rgb_analysis_to_session, save_audio_analysis_to_session
 
 from capacity import is_mp4_extension, load_mp4_meta, compute_capacity_bytes_mp4
 from data_comparison import save_video_to_session
-from lsb_xor_algorithm import extract_xor_lsb_mp4, embed_xor_lsb_mp4
 
 # ------------------------------------------------------
 
@@ -301,15 +299,12 @@ def results():
         cover_videopath = cover_filepath
         stego_videopath = stego_filepath
 
-        save_video_psnr_analysis_to_session(cover_videopath, stego_videopath)
-        video_psnr_filepath = session['video_psnr_filepath']
 
         return render_template(
             "results.html",
             media_type=media_type,
             cover_videopath=cover_videopath,
             stego_videopath=stego_videopath,
-            video_psnr_filepath=video_psnr_filepath,
         )
 
     else:
@@ -545,7 +540,6 @@ def embed_media():
             )
 
             save_audio_to_session(cover_bytes, stego_wav)
-
             return redirect(url_for("results"))
 
         except Exception as e:
@@ -557,11 +551,12 @@ def embed_media():
         try:
             meta = load_mp4_meta(cover_bytes)
             capacity_bytes = compute_capacity_bytes_mp4(meta)
+
             if len(payload_bytes) > capacity_bytes:
                 flash(f"Payload too large: {len(payload_bytes)} > {capacity_bytes} bytes.", "error")
                 return redirect(url_for("index"))
 
-            stego_bytes = embed_xor_lsb_mp4(cover_bytes, payload_bytes, k=lsb, key=key)
+            stego_bytes = embed_uuid_box_mp4(cover_bytes, payload_bytes, k=lsb, key=key)
 
             save_video_to_session(cover_bytes, stego_bytes)
             return redirect(url_for("results"))
@@ -661,9 +656,10 @@ def extract_media():
     # -------- MP4 PATH -------- 
     if is_mp4_extension(stego.filename):
         try:
-            payload = extract_xor_lsb_mp4(file_bytes, k=lsb, key=key)
+            payload = extract_uuid_box_mp4(file_bytes, k=lsb, key=key)
             return send_file(
                 io.BytesIO(payload),
+                mimetype="application/octet-stream",
                 as_attachment=True,
                 download_name="payload.bin"
             )

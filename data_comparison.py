@@ -1,9 +1,7 @@
 import uuid
 import os
-import cv2
 from flask import session
 from PIL import Image
-from skimage.metrics import structural_similarity as ssim
 import numpy as np
 import soundfile as sf
 import matplotlib.pyplot as plt
@@ -127,46 +125,6 @@ def compute_audio_diff(cover_path, stego_path):
     diff_list = changed_indices.tolist()
 
     return diff_list
-
-
-def compute_video_diff(cover_path, stego_path, step=60, ssim_threshold=0.99):
-    """
-    Compare two video files using SSIM on sampled frames.
-    Returns a list of (frame_idx, ssim_score) for frames below the threshold.
-    """
-
-    cap_cover = cv2.VideoCapture("static/" + cover_path)
-    cap_stego = cv2.VideoCapture("static/" + stego_path)
-
-    if not cap_cover.isOpened() or not cap_stego.isOpened():
-        raise ValueError("Could not open one or both video files")
-
-    diff_frames = []
-    idx = 0
-
-    while True:
-        ret1, frame1 = cap_cover.read()
-        ret2, frame2 = cap_stego.read()
-        if not ret1 or not ret2:
-            break
-
-        if frame1.shape != frame2.shape:
-            raise ValueError("Cover and stego frames must have same dimensions")
-
-        # Only check every Nth frame
-        if idx % step == 0:
-            gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-            gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-            score, _ = ssim(gray1, gray2, full=True)
-            if score < ssim_threshold:
-                diff_frames.append((idx, score))
-
-        idx += 1
-
-    cap_cover.release()
-    cap_stego.release()
-
-    return diff_frames
 
 
 def save_rgb_analysis_to_session(cover_path, stego_path):
@@ -421,68 +379,6 @@ def save_spectrogram_comparison_to_session(cover_path, stego_path):
     session["audio_spectrogram_filepath"] = out_path.replace("static/", "")
     return True
 
-
-def save_video_psnr_analysis_to_session(cover_path, stego_path, step=60):
-    """
-    Perform analysis of cover vs stego video:
-    - Compute PSNR values on sampled frames (every 'step')
-    - Save a PSNR-over-frames plot to session
-    """
-
-    cap_cover = cv2.VideoCapture("static/" + cover_path)
-    cap_stego = cv2.VideoCapture("static/" + stego_path)
-
-    if not cap_cover.isOpened() or not cap_stego.isOpened():
-        raise ValueError("Could not open one or both video files")
-
-    def mse(img1, img2):
-        return np.mean((img1.astype("float") - img2.astype("float")) ** 2)
-
-    def psnr(img1, img2):
-        mse_val = mse(img1, img2)
-        if mse_val == 0:
-            return float("inf")
-        max_pixel = 255.0
-        return 20 * np.log10(max_pixel / np.sqrt(mse_val))
-
-    psnr_values = []
-    frame_indices = []
-    idx = 0
-
-    while True:
-        ret1, frame1 = cap_cover.read()
-        ret2, frame2 = cap_stego.read()
-        if not ret1 or not ret2:
-            break
-
-        if frame1.shape != frame2.shape:
-            raise ValueError("Cover and stego frames must have same dimensions")
-
-        # Only compute every Nth frame
-        if idx % step == 0:
-            psnr_values.append(psnr(frame1, frame2))
-            frame_indices.append(idx)
-
-        idx += 1
-
-    cap_cover.release()
-    cap_stego.release()
-
-    # ---- Plot PSNR over frames ----
-    plt.figure(figsize=(10, 5))
-    plt.plot(frame_indices, psnr_values, color="blue", marker="o", linestyle="-")
-    plt.xlabel("Frame Index")
-    plt.ylabel("PSNR (dB)")
-    plt.title(f"PSNR Across Frames (Sampled every {step} frames)")
-    plt.grid(True)
-
-    uid = uuid.uuid4().hex
-    out_path = f"static/tmp/user/video/video_psnr_{uid}.png"
-    plt.savefig(out_path)
-    plt.close()
-
-    session['video_psnr_filepath'] = out_path.replace("static/", "")
-    return True
 
 def save_gif_diff_animation_to_session(cover_path: str, stego_path: str) -> bool:
     """
