@@ -422,15 +422,21 @@ def parse_audio_header(hdr: bytes) -> AudioHeader:
     flags = _struct.unpack("<I", hdr[24:28])[0]
     return AudioHeader(b"STG2", length, sha8, start_sample, flags, 0)
 
-def select_complex_audio_indices(samples: np.ndarray, top_percent: int = 30, window: int = 1024) -> np.ndarray:
+def select_complex_audio_indices(samples: np.ndarray, k_bits: int, top_percent: int = 30, window: int = 1024) -> np.ndarray:
     # complexity = moving-avg(|x[n] − x[n−1]|)
-    x = samples.astype(np.int64)
+    if k_bits > 0:
+        mask = ~((1 << k_bits) - 1)
+        x = (samples.astype(np.int64) & mask)
+    else:
+        x = samples.astype(np.int64)
+
     d = np.abs(np.diff(x, prepend=x[:1]))
     if window > 1:
         kernel = np.ones(window, dtype=np.float64) / window
         score = np.convolve(d.astype(np.float64), kernel, mode="same")
     else:
         score = d.astype(np.float64)
+
     n = score.shape[0]
     k = max(1, int(n * (top_percent / 100.0)))
     idx_sorted = np.argsort(score)
@@ -457,7 +463,7 @@ def build_indices_for_audio_with_start(
     hdr_idx = perm[:hdr_groups]
 
     if use_complex:
-        complex_idx = select_complex_audio_indices(samples, top_percent=complex_top_percent)
+        complex_idx = select_complex_audio_indices(samples, k_bits=k_bits, top_percent=complex_top_percent)
         hdr_set = set(int(i) for i in hdr_idx)
         complex_idx = np.array([i for i in complex_idx if int(i) not in hdr_set], dtype=np.int64)
         rng2 = np.random.RandomState((int(seed) ^ 0xA5A5A5) & 0x7FFFFFFF)
