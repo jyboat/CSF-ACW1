@@ -33,7 +33,6 @@ from data_comparison import (
     save_image_comparison_to_session,
     save_gray_analysis_to_session,
     save_spectrogram_comparison_to_session,
-    save_video_psnr_analysis_to_session,
     save_gif_diff_animation_to_session
     )
 
@@ -55,12 +54,9 @@ from lsb_xor_gif_multiframe import (
     extract_gif_multiframe_lsb_xor_even as extract_gif_multiframe_lsb_xor
 )
 
-# data comparison helpers
-from data_comparison import compute_pixel_diff, save_rgb_analysis_to_session, save_audio_analysis_to_session
 
 from capacity import is_mp4_extension, load_mp4_meta, compute_capacity_bytes_mp4
 from data_comparison import save_video_to_session
-from lsb_xor_algorithm import extract_xor_lsb_mp4, embed_xor_lsb_mp4
 
 # ------------------------------------------------------
 
@@ -303,15 +299,12 @@ def results():
         cover_videopath = cover_filepath
         stego_videopath = stego_filepath
 
-        save_video_psnr_analysis_to_session(cover_videopath, stego_videopath)
-        video_psnr_filepath = session['video_psnr_filepath']
 
         return render_template(
             "results.html",
             media_type=media_type,
             cover_videopath=cover_videopath,
             stego_videopath=stego_videopath,
-            video_psnr_filepath=video_psnr_filepath,
         )
 
     else:
