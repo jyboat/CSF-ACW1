@@ -1,4 +1,4 @@
-import io, struct as _struct, hashlib, random
+import io, struct as _struct, hashlib, random, uuid
 from dataclasses import dataclass
 import numpy as np
 from PIL import Image
@@ -560,6 +560,83 @@ def extract_xor_lsb_audio(stego: np.ndarray, k: int, key: str):
 # =====================================
 # ======= EMBED / EXTRACT (MP4) =====
 # =====================================
+
+_STG_UUID = uuid.UUID("8d3f5b62-6c6e-4b2c-8e9c-9cc3a9a5b1d2").bytes  # pick your own GUID
+
+def _make_box(box_type: bytes, payload: bytes) -> bytes:
+    size = 8 + len(payload)
+    return _struct.pack(">I4s", size, box_type) + payload
+
+def _iter_top_level_boxes(b: bytes):
+    off, n = 0, len(b)
+    while off + 8 <= n:
+        size = int.from_bytes(b[off:off+4], "big")
+        typ  = b[off+4:off+8]
+        if size < 8 or off + size > n:  # malformed
+            break
+        yield off, size, typ
+        off += size
+
+def embed_uuid_box_mp4(mp4_bytes: bytes, payload: bytes, k: int, key: str) -> bytes:
+    """
+    Hide header+payload in a top-level MP4 uuid box (ignored by players).
+    We reuse your existing keystream and audio-style header for simplicity.
+    """
+    import numpy as np
+    # Reuse your header/keystream utilities
+    try:
+        from lsb_xor_algorithm import make_audio_header, keystream_bits, parse_audio_header
+    except Exception:
+        # Fallback: minimal 32-byte header = b'STG2' + payload_len(8 LE) + reserved pad
+        def make_audio_header(data: bytes, start_sample=0, use_complex=False):
+            tag = b"STG2"
+            ln  = len(data).to_bytes(8, "little")
+            pad = bytes(32 - (4 + 8))
+            return tag + ln + pad
+        def parse_audio_header(hdr: bytes):
+            if not hdr.startswith(b"STG2"):
+                raise ValueError("Invalid STG2 audio header")
+            length = int.from_bytes(hdr[4:12], "little")
+            class H: pass
+            h = H(); h.length = length
+            return h
+        def keystream_bits(key: str, n_bits: int):
+            import numpy as np, hashlib
+            # simple PRG from SHA256 blocks
+            out = bytearray()
+            counter = 0
+            seed = key.encode("utf-8")
+            while len(out) < (n_bits + 7) // 8:
+                out += hashlib.sha256(seed + counter.to_bytes(4, "little")).digest()
+                counter += 1
+            bits = np.unpackbits(np.frombuffer(bytes(out), dtype=np.uint8))
+            return bits[:n_bits].astype(np.uint8)
+
+    hdr = make_audio_header(payload, start_sample=0, use_complex=False)  # 32 bytes in your code
+    bits = np.unpackbits(np.frombuffer(hdr + payload, dtype=np.uint8))
+    C    = bits ^ keystream_bits(key, bits.size)
+    cipher = np.packbits(C).tobytes()
+
+    box_payload = _STG_UUID + cipher
+    box = _make_box(b"uuid", box_payload)
+    return mp4_bytes + box  # append as top-level box (safe)
+
+def extract_uuid_box_mp4(mp4_bytes: bytes, k: int = 0, key: str = "") -> bytes:
+    """
+    Find our uuid box, keystream-decrypt, parse header, return payload bytes.
+    """
+    import numpy as np
+    from lsb_xor_algorithm import keystream_bits, parse_audio_header  # prefer your real ones
+    for off, size, typ in _iter_top_level_boxes(mp4_bytes):
+        if typ == b"uuid" and mp4_bytes[off+8:off+24] == _STG_UUID:
+            cipher = mp4_bytes[off+24: off+size]
+            bits   = np.unpackbits(np.frombuffer(cipher, dtype=np.uint8))
+            M      = bits ^ keystream_bits(key, bits.size)
+            clear  = np.packbits(M).tobytes()
+            hdr    = parse_audio_header(clear[:32])
+            payload = clear[32:32+hdr.length]
+            return payload
+    raise ValueError("No stego uuid box found")
 
 def _iter_mp4_top_level_boxes(b: bytes):
     """
