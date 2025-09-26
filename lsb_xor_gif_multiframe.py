@@ -9,7 +9,8 @@ from data_comparison import (
 
 # lsb_xor_algorithm.py  
 from lsb_xor_algorithm import (
-    embed_xor_lsb_from_xy,              
+    embed_xor_lsb_from_xy,
+    embed_xor_lsb_auto,              
     extract_xor_lsb_auto,
     _sobel_magnitude      
 )
@@ -105,23 +106,23 @@ def embed_gif_multiframe_lsb_xor(gif_bytes: bytes, payload: bytes, k: int, key: 
     # Reconstruct animated GIF from modified flat array
     return combined_flat_to_gif(stego_flat, meta)
 
-def extract_gif_multiframe_lsb_xor(gif_bytes: bytes, k: int, key: str) -> bytes:
-    """Extract payload from ALL frames of animated GIF"""
+# def extract_gif_multiframe_lsb_xor(gif_bytes: bytes, k: int, key: str) -> bytes:
+#     """Extract payload from ALL frames of animated GIF"""
     
-    # Detect mode
-    has_alpha = detect_has_alpha(gif_bytes) 
-    mode = "RGBA" if has_alpha else "RGB"
+#     # Detect mode
+#     has_alpha = detect_has_alpha(gif_bytes) 
+#     mode = "RGBA" if has_alpha else "RGB"
     
-    # Convert all frames to combined flat array
-    combined_flat, meta = gif_to_combined_flat(gif_bytes, mode)
+#     # Convert all frames to combined flat array
+#     combined_flat, meta = gif_to_combined_flat(gif_bytes, mode)
     
-    # Create virtual shape
-    virtual_height = meta['n_frames']
-    virtual_width = meta['pixels_per_frame']
-    virtual_shape = (virtual_height, virtual_width) if len(meta['frame_shape']) == 2 else (virtual_height, virtual_width, meta['frame_shape'][2])
+#     # Create virtual shape
+#     virtual_height = meta['n_frames']
+#     virtual_width = meta['pixels_per_frame']
+#     virtual_shape = (virtual_height, virtual_width) if len(meta['frame_shape']) == 2 else (virtual_height, virtual_width, meta['frame_shape'][2])
 
-    # Use existing LSB+XOR extraction
-    return extract_xor_lsb_auto(combined_flat, virtual_shape, k, key)
+#     # Use existing LSB+XOR extraction
+#     return extract_xor_lsb_auto(combined_flat, virtual_shape, k, key)
 
 def compute_gif_multiframe_capacity(gif_bytes: bytes, k: int) -> int:
     """Compute LSB capacity across ALL frames"""
@@ -196,7 +197,7 @@ def _interleaved_flat_to_combined(interleaved_flat: np.ndarray, meta: dict) -> n
     # concatenate by frame
     return deint.reshape(-1)
 
-def embed_gif_multiframe_lsb_xor_even(gif_bytes: bytes, payload: bytes, k: int, key: str) -> bytes:
+def embed_gif_multiframe_lsb_xor(gif_bytes: bytes, payload: bytes, k: int, key: str, click_x: int = None, click_y: int = None) -> bytes:
     """
     Evenly distribute header+payload bits across frames by interleaving frames in memory,
     embedding contiguously, then de-interleaving back.
@@ -215,11 +216,14 @@ def embed_gif_multiframe_lsb_xor_even(gif_bytes: bytes, payload: bytes, k: int, 
     stego_inter = embed_xor_lsb_from_xy(
         inter, virtual_shape, payload, k, key, start_x=0, start_y=0
     )
+    # stego_inter = embed_xor_lsb_auto(
+    #     cover_bytes=gif_bytes, cover_flat=inter, shape=virtual_shape, payload=payload, k=k, key=key, mode=mode
+    # )
 
     combined_back = _interleaved_flat_to_combined(stego_inter, meta)
     return combined_flat_to_gif(combined_back, meta)
 
-def extract_gif_multiframe_lsb_xor_even(gif_bytes: bytes, k: int, key: str) -> bytes:
+def extract_gif_multiframe_lsb_xor(gif_bytes: bytes, k: int, key: str) -> bytes:
     """
     Extract payload that was embedded with the even-distribution variant.
     """
