@@ -50,8 +50,8 @@ from lsb_xor_algorithm import (
 
 from lsb_xor_gif_multiframe import (
     compute_gif_multiframe_capacity,
-    embed_gif_multiframe_lsb_xor_even as embed_gif_multiframe_lsb_xor,
-    extract_gif_multiframe_lsb_xor_even as extract_gif_multiframe_lsb_xor
+    embed_gif_multiframe_lsb_xor,
+    extract_gif_multiframe_lsb_xor
 )
 
 
@@ -445,6 +445,9 @@ def embed_media():
             app.logger.info(f"Embedding {len(payload_bytes)} bytes across all GIF frames (capacity: {capacity_bytes})")
 
             # Embed across ALL frames using LSB+XOR algorithm
+            # if start_x_str and start_y_str:
+            #     stego_gif = embed_gif_multiframe_lsb_xor(cover_bytes, payload_bytes, k=lsb, key=key, click_x=int(start_x_str), click_y=int(start_y_str))
+            # else:
             stego_gif = embed_gif_multiframe_lsb_xor(cover_bytes, payload_bytes, k=lsb, key=key)
             
             save_images_to_session(cover_bytes, stego_gif, img_format="gif")
