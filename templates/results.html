@@ -17,6 +17,9 @@
     {% elif media_type == "mp4" and cover_videopath and stego_videopath %}
     {% set left_url = url_for('static', filename=cover_videopath) %}
     {% set right_url = url_for('static', filename=stego_videopath) %}
+    {% elif media_type == "gif" and cover_filepath and stego_filepath %}
+    {% set left_url = url_for('static', filename=cover_filepath) %}
+    {% set right_url = url_for('static', filename=stego_filepath) %}
     {% endif %}
 
     <div id="hex-sources" data-left="{{ left_url or '' }}" data-right="{{ right_url or '' }}"></div>
@@ -73,6 +76,22 @@
             </div>
         {% else %}
             <p class="text-center text-muted small mt-3">Per-frame difference not available for this GIF.</p>
+        {% endif %}
+
+        {% if gif_cover_stego_histogram_filepath %}
+        <div class="row mt-3">
+            <div class="col-md-12 text-center">
+                <div class="section-box">
+                    <h6><strong>Cover vs Stego Pixel Intensity Histogram</strong></h6>
+                    <img src="{{ url_for('static', filename=gif_cover_stego_histogram_filepath) }}" 
+                        class="img-preview" style="max-width:100%;" 
+                        alt="Cover vs Stego Pixel Intensity Histogram">
+                    <p class="text-muted small mt-2">
+                    This shows overall pixel intensity distributions for Cover and Stego GIFs.  
+                    </p>
+                </div>
+            </div>
+        </div>
         {% endif %}
 
         {% else %}

@@ -357,6 +357,13 @@ def save_gray_analysis_to_session(cover_path, stego_path):
     return True
 
 def save_spectrogram_comparison_to_session(cover_path, stego_path):
+    """
+        Generate a side-by-side spectrogram comparison of Cover, Stego, 
+        and their Difference (Cover - Stego). 
+        Saves to static/tmp/user/audio/spectrogram_<uuid>.png and 
+        sets session['audio_spectrogram_filepath'].
+    """
+
     # Load both audio files
     cover_audio, sr1 = sf.read("static/" + cover_path)
     stego_audio, sr2 = sf.read("static/" + stego_path)
@@ -366,7 +373,6 @@ def save_spectrogram_comparison_to_session(cover_path, stego_path):
     if cover_audio.shape != stego_audio.shape:
         raise ValueError("Cover and stego audio must have same shape")
     
-    # If 
     if cover_audio.ndim > 1:
         cover_audio = cover_audio[:,0]
     if stego_audio.ndim > 1:
@@ -472,3 +478,35 @@ def save_gif_diff_animation_to_session(cover_path: str, stego_path: str) -> bool
 
     session["gif_diff_filepath"] = out_path.replace("static/", "")
     return True
+
+def save_gif_cover_stego_histogram_to_session(cover_path, stego_path):
+    """
+    Create paired histograms of pixel intensities for Cover vs Stego GIFs.
+    Saves result as PNG and stores path in session.
+    """
+    cover_full = os.path.join("static", cover_path)
+    stego_full = os.path.join("static", stego_path)
+
+    cover_img = Image.open(cover_full).convert("L")  # grayscale
+    stego_img = Image.open(stego_full).convert("L")
+
+    cover_pixels = np.array(cover_img).ravel()
+    stego_pixels = np.array(stego_img).ravel()
+
+    plt.figure(figsize=(8, 5))
+    plt.hist(cover_pixels, bins=256, range=(0, 255), alpha=0.5, label="Cover", color="blue")
+    plt.hist(stego_pixels, bins=256, range=(0, 255), alpha=0.5, label="Stego", color="red")
+    plt.title("Pixel Intensity Histogram (Cover vs Stego)")
+    plt.xlabel("Pixel Value (0-255)")
+    plt.ylabel("Frequency")
+    plt.legend()
+
+    out_path = f"generated/cover_stego_hist_{os.path.basename(cover_path)}.png"
+    os.makedirs(os.path.join("static", "generated"), exist_ok=True)
+    plt.savefig(os.path.join("static", out_path))
+    plt.close()
+
+    session["gif_cover_stego_histogram_filepath"] = out_path
+
+
+

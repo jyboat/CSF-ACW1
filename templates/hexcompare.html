@@ -20,6 +20,9 @@
   {% elif media_type == "mp4" and cover_videopath and stego_videopath %}
   {% set left_url = url_for('static', filename=cover_videopath) %}
   {% set right_url = url_for('static', filename=stego_videopath) %}
+  {% elif media_type == "gif" and cover_filepath and stego_filepath %}
+  {% set left_url = url_for('static', filename=cover_filepath) %}
+  {% set right_url = url_for('static', filename=stego_filepath) %}
   {% endif %}
 
   <div id="hexLoading" class="loading-overlay">

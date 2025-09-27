@@ -33,7 +33,8 @@ from data_comparison import (
     save_image_comparison_to_session,
     save_gray_analysis_to_session,
     save_spectrogram_comparison_to_session,
-    save_gif_diff_animation_to_session
+    save_gif_diff_animation_to_session,
+    save_gif_cover_stego_histogram_to_session
     )
 
 # lsb_xor_algorithm.py  
@@ -246,6 +247,8 @@ def results():
 
         # --- Animated GIF specific: build an animated per-frame diff if possible ---
         gif_diff_filepath = None
+        gif_cover_stego_hist = None 
+         
         if cover_filepath.lower().endswith(".gif") and stego_filepath.lower().endswith(".gif"):
             try:
 
@@ -253,6 +256,11 @@ def results():
                     if getattr(c, "is_animated", False) and getattr(s, "is_animated", False):
                         save_gif_diff_animation_to_session(cover_filepath, stego_filepath)
                         gif_diff_filepath = session.get("gif_diff_filepath")
+
+                         # Cover vs Stego histogram
+                        save_gif_cover_stego_histogram_to_session(cover_filepath, stego_filepath)
+                        gif_cover_stego_hist = session.get("gif_cover_stego_histogram_filepath")
+
             except Exception as e:
                 # Non-fatal: we still render the page without the animated diff
                 app.logger.warning(f"GIF animated diff could not be generated: {e}")
@@ -266,7 +274,8 @@ def results():
             rgb_analysis_filepath=rgb_analysis,
             diff_visualization_filepath=diff_visual,
             gray_analysis_filepath=gray_analysis,
-            gif_diff_filepath=gif_diff_filepath  # may be None if not animated or on error
+            gif_diff_filepath=gif_diff_filepath,  # may be None if not animated or on error 
+            gif_cover_stego_histogram_filepath=gif_cover_stego_hist
         )
 
     # AUDIO path
@@ -717,6 +726,14 @@ def hexcompare():
             media_type=media_type,
             cover_videopath=cover_path,
             stego_videopath=stego_path,
+        )
+    
+    if cover_path.lower().endswith(".gif") and stego_path.lower().endswith(".gif"):
+        media_type = "gif"
+        return render_template("hexcompare.html",
+            media_type=media_type,
+            cover_filepath=cover_path,
+            stego_filepath=stego_path
         )
 
 
