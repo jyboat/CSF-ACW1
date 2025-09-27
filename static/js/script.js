@@ -144,8 +144,11 @@ $(document).ready(function () {
             return; // no file, do nothing
         }
 
-        // 🚫 Skip for mp4 or gif
-        if (fileType.endsWith("mp4") || file.name.toLowerCase().endsWith(".gif")) {
+        const file = $fileInput[0].files[0];
+        const fileType = file.type;
+
+        // Skip for mp4 or gif
+        if (fileType.endsWith("mp4") || file.name.endsWith(".gif")) {
             return;
         }
 
@@ -154,9 +157,6 @@ $(document).ready(function () {
             toastr.error("Please enter a key to proceed");
             return;
         }
-
-        const file = $fileInput[0].files[0];
-        const fileType = file.type;
 
         $("#useComplex").val("0"); // clear use complex flag
 
