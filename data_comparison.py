@@ -128,42 +128,68 @@ def compute_audio_diff(cover_path, stego_path):
 
 
 def save_rgb_analysis_to_session(cover_path, stego_path):
-    cover_img = np.array(Image.open("static/" + cover_path).convert("RGB"))
-    stego_img = np.array(Image.open("static/" + stego_path).convert("RGB"))
+    """
+    Fast RGB histogram overlay for large images.
+    - Uses np.bincount (exact) instead of plt.hist.
+    - Line/step plots (cheap to render).
+    - Log y-scale so shapes remain visible for high pixel counts.
+    """
+    import os, uuid
+    from PIL import Image
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    cover_img = Image.open("static/" + cover_path).convert("RGB")
+    stego_img = Image.open("static/" + stego_path).convert("RGB")
+
+    cover = np.asarray(cover_img, dtype=np.uint8)
+    stego = np.asarray(stego_img, dtype=np.uint8)
+
+    if cover.shape != stego.shape:
+        raise ValueError("Cover and stego images must have same dimensions")
 
     channel_names = ["Red", "Green", "Blue"]
-    # colors = ["red", "green", "blue"]
+    plt.figure(figsize=(12, 5), dpi=110)
 
-    plt.figure(figsize=(12, 5))
-    
-    # indexes the channel (0=Red, 1=Green, 2=Blue)
     for i, name in enumerate(channel_names):
         ax = plt.subplot(1, 3, i+1)
-        c = cover_img[..., i].ravel()
-        s = stego_img[..., i].ravel()
 
-        # Stego: 
-        ax.hist(s, bins=np.arange(257), range=(0, 256),
-                histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
+        # Flatten channels
+        c = cover[..., i].ravel()
+        s = stego[..., i].ravel()
 
-        # Cover: 
-        ax.hist(c, bins=np.arange(257), range=(0, 256),
-                histtype="stepfilled", linewidth=1.0, label="Cover", color="purple",)
+        # Exact 256-bin hist via bincount (much faster than plt.hist).
+        c_counts = np.bincount(c, minlength=256)
+        s_counts = np.bincount(s, minlength=256)
+
+        x = np.arange(256)
+
+        # Draw stego on top so it's visible; outline-ish using step.
+        ax.step(x, s_counts, where="mid", label="Stego")
+        ax.step(x, c_counts, where="mid", label="Cover")
 
         ax.set_title(f"{name} channel")
         ax.set_xlabel("Pixel intensity")
         ax.set_ylabel("No. of pixels")
         ax.set_xlim(0, 255)
+
+        # Log scale helps when counts are huge.
+        ax.set_yscale("log")
         ax.legend()
 
     plt.tight_layout()
     uid = uuid.uuid4().hex
     out_path = f"static/tmp/user/img/rgb_analysis_{uid}.png"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path)
-    plt.close()
+    plt.close("all")
+
+    # Free memory explicitly for giant images
+    del cover, stego, cover_img, stego_img
 
     session['rgb_analysis_filepath'] = out_path.replace("static/", "")
     return True
+
 
 def save_audio_analysis_to_session(cover_path, stego_path):
     """
@@ -286,41 +312,46 @@ def save_image_comparison_to_session(cover_path: str, stego_path: str) -> bool:
 
 def save_gray_analysis_to_session(cover_path, stego_path):
     """
-    Build a grayscale/luminance intensity histogram:
-    - Convert both images to 'L' (8-bit grayscale)
-    - Overlay histograms for Cover vs Stego
-    - Saves to static/tmp/user/img/gray_analysis_<uuid>.png
-    - Stores path in session['gray_analysis_filepath']
+    Fast grayscale histogram overlay for large images.
+    - np.bincount for exact binning
+    - step lines (cheap)
+    - log y-scale for visibility
     """
+    import os, uuid
+    from PIL import Image
+    import numpy as np
+    import matplotlib.pyplot as plt
 
-    cover_gray = np.array(Image.open("static/" + cover_path).convert("L"))
-    stego_gray = np.array(Image.open("static/" + stego_path).convert("L"))
+    cover_gray = np.asarray(Image.open("static/" + cover_path).convert("L"), dtype=np.uint8)
+    stego_gray = np.asarray(Image.open("static/" + stego_path).convert("L"), dtype=np.uint8)
 
     if cover_gray.shape != stego_gray.shape:
         raise ValueError("Cover and stego images must have same dimensions")
 
-    c = cover_gray.ravel()
-    s = stego_gray.ravel()
+    c_counts = np.bincount(cover_gray.ravel(), minlength=256)
+    s_counts = np.bincount(stego_gray.ravel(), minlength=256)
+    x = np.arange(256)
 
     plt.figure(figsize=(8, 4.5), dpi=110)
-
-    # Stego on top (filled), Cover beneath (outlined) – consistent with your RGB plot
-    plt.hist(s, bins=np.arange(257), range=(0, 256),
-             histtype="stepfilled", alpha=1.0, label="Stego", color="yellow")
-    plt.hist(c, bins=np.arange(257), range=(0, 256),
-             histtype="stepfilled", linewidth=1.2, label="Cover", color="purple")
+    plt.step(x, s_counts, where="mid", label="Stego")
+    plt.step(x, c_counts, where="mid", label="Cover")
 
     plt.title("Grayscale Intensity Distribution")
     plt.xlabel("Pixel intensity (0–255)")
     plt.ylabel("No. of pixels")
     plt.xlim(0, 255)
+    plt.yscale("log")
     plt.legend()
     plt.tight_layout()
 
     uid = uuid.uuid4().hex
     out_path = f"static/tmp/user/img/gray_analysis_{uid}.png"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path)
-    plt.close()
+    plt.close("all")
+
+    # Free memory
+    del cover_gray, stego_gray
 
     session['gray_analysis_filepath'] = out_path.replace("static/", "")
     return True

@@ -44,6 +44,10 @@ $(document).ready(function () {
         }
 
         if (fileType.startsWith("image/")) {
+            $previewBox.css("cursor", "pointer");
+            if (file.name.toLowerCase().endsWith(".gif")){
+                $previewBox.css("cursor", "default");
+            };
             const reader = new FileReader();
             reader.onload = function (event) {
                 $coverImage.attr("src", event.target.result).removeClass("d-none");
@@ -63,9 +67,10 @@ $(document).ready(function () {
             };
             reader.readAsDataURL(file);
 
-        } else if (fileType.startsWith("audio/") || file.name.endsWith(".wav") || file.name.endsWith(".pcm")) {
+        } else if (fileType.startsWith("audio/") || file.name.endsWith(".wav")) {
             $waveform.removeClass("d-none");
             $noFileText.hide();
+            $previewBox.css("cursor", "pointer");
 
             // Fixed height for audio
             setBoxHeight(defaultBoxHeight);
@@ -79,6 +84,7 @@ $(document).ready(function () {
             const audioUrl = URL.createObjectURL(file);
             wavesurfer.load(audioUrl);
         } else if (fileType.startsWith("video/") || file.name.endsWith(".mp4")) {
+            $previewBox.css("cursor", "default");
             $noFileText.hide();
             setBoxHeight(defaultBoxHeight);
             const video = document.createElement("video");
@@ -94,6 +100,7 @@ $(document).ready(function () {
 
     $("#removeFileBtn").on("click", function () {
         $fileInput.val("");
+        $previewBox.css("cursor", "pointer");
         $coverImage.addClass("d-none").attr("src", "");
         $waveform.addClass("d-none").empty();
         $noFileText.show();
@@ -135,6 +142,11 @@ $(document).ready(function () {
         if ($fileInput[0].files.length === 0) {
             $fileInput.trigger("click");
             return; // no file, do nothing
+        }
+
+        // 🚫 Skip for mp4 or gif
+        if (fileType.endsWith("mp4") || file.name.toLowerCase().endsWith(".gif")) {
+            return;
         }
 
         const noKey = $stegoKey.val().trim() == "";
@@ -261,6 +273,18 @@ $(document).ready(function () {
         const keyEntered = $stegoKey.val().trim() !== "";
 
         if (fileSelected && keyEntered) {
+            const file = $fileInput[0].files[0];
+            const fileType = file.type;
+
+            let message = "Step 3: Click a location on your file as a starting location to hide your data or press the button below to skip choosing a starting location";
+
+            if (fileType === "image/gif" || fileType == "video/mp4") {
+                message = "Step 3: Press the button below to upload your payload";
+            } else {
+                message = "Step 3: Click a location on your file as a starting location to hide your data or press the button below to skip choosing a starting location";
+            }
+
+            $("#step3Text b").text(message);
             $step3Text.show();
         } else {
             $step3Text.hide();
