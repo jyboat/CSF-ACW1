@@ -332,7 +332,7 @@ $(document).ready(function () {
 
         // Compute current payload size (bytes)
         let payloadSizeBytes = 0;
-        const textVal = $textPayload.val().trim();
+        const textVal = $textPayload.val();
         if (textVal) {
             payloadSizeBytes = new Blob([textVal]).size;
         } else if ($payloadFile[0].files.length > 0) {
