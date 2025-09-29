@@ -382,25 +382,28 @@ def save_spectrogram_comparison_to_session(cover_path, stego_path):
     diff_signal = stego_audio - cover_audio
 
     # Plot spectrograms side by side
-    plt.figure(figsize=(15, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
-    plt.subplot(1, 3, 1)
-    plt.specgram(cover_audio, Fs=sr1, cmap="inferno")
-    plt.title("Cover Audio Spectogram")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Frequency (Hz)")
+    img1 = axes[0].specgram(cover_audio, Fs=sr1, cmap="inferno")
+    axes[0].set_title("Cover Audio Spectogram")
+    axes[0].set_xlabel("Time (s)")
+    axes[0].set_ylabel("Frequency (Hz)")
+    cbar1 = fig.colorbar(img1[3], ax=axes[0])
+    cbar1.set_label("Intensity (yellow = strong, purple = weak)")
 
-    plt.subplot(1, 3, 2)
-    plt.specgram(stego_audio, Fs=sr1, cmap="inferno")
-    plt.title("Stego Audio Spectogram")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Frequency (Hz)")
+    img2 = axes[1].specgram(stego_audio, Fs=sr1, cmap="inferno")
+    axes[1].set_title("Stego Audio Spectogram")
+    axes[1].set_xlabel("Time (s)")
+    axes[1].set_ylabel("Frequency (Hz)")
+    cbar2 = fig.colorbar(img2[3], ax=axes[1])
+    cbar2.set_label("Intensity (yellow = strong, purple = weak)")
 
-    plt.subplot(1, 3, 3)
-    plt.specgram(diff_signal, Fs=sr1, cmap="inferno")
-    plt.title("Stego-Cover Spectrogram Difference")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Frequency (Hz)")
+    img3 = axes[2].specgram(diff_signal, Fs=sr1, cmap="inferno")
+    axes[2].set_title("Stego-Cover Spectrogram Difference")
+    axes[2].set_xlabel("Time (s)")
+    axes[2].set_ylabel("Frequency (Hz)")
+    cbar3 = fig.colorbar(img3[3], ax=axes[2])
+    cbar3.set_label("Intensity (yellow = strong, purple = weak)")
 
 
     plt.tight_layout()
